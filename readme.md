@@ -30,7 +30,18 @@
 
 ## Dependencies and installation
 
-`ttrek.json` declares the Tcl runtime, `tpersist`, `tpathexp`, `cmark-gfm-tcl`, `jinja2-tcl`, `tjson`, and `tdbcsqlite3` dependencies. The SQLite driver supplies its `tdbc` and `sqlite3` dependencies transitively. Lexical build dependencies remain in `package.json`. The selected ttrek registry must contain a `cmark-gfm-tcl` recipe; it is not present in the current local registry.
+`ttrek.json` declares the Tcl runtime, `tpersist`, `tpathexp`, `cmark-gfm-tcl`, `jinja2-tcl`, `tjson`, and `tdbcsqlite3` dependencies. The SQLite driver supplies its `tdbc` and `sqlite3` dependencies transitively. Lexical build dependencies remain in `package.json`. The public registry provides the native dependency recipes, including `cmark-gfm-tcl`.
+
+With current checkouts of [private-ttrek-registry](https://github.com/jerily/private-ttrek-registry)
+and [ttrek-registry](https://github.com/jerily/ttrek-registry) beside this project,
+install with ordered registry support:
+
+```sh
+ttrek install -y -registry ../private-ttrek-registry -registry ../ttrek-registry
+```
+
+Git must have access to the private package sources. Registry selection does not
+require a token; source cloning uses Git's existing credentials.
 
 | Dependency | Tcl package |
 | --- | --- |
