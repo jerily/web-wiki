@@ -1,0 +1,239 @@
+package require tcltest 2
+namespace import ::tcltest::*
+package require web-wiki 0.1.0
+
+proc write_source {name text} {
+    set channel [open [file join $::sourceDir $name] w]
+    try {fconfigure $channel -encoding utf-8; puts -nonewline $channel $text} finally {close $channel}
+}
+proc setup_wiki {} {
+    set ::sourceDir [makeDirectory wiki-source]
+    file mkdir [file join $::sourceDir Guides]
+    write_source Welcome.md "# Welcome\n\nHello world.\n"
+    write_source Guides/Start.md "# Start Here\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
+    set ::db [::tpersist::db_connect -database :memory: -autobegin 0]
+    ::web::wiki::init_schema $::db
+    set ::store [::web::wiki::create -connection $::db -domain example.test]
+    ::web::wiki::sync $::store $::sourceDir
+    set ::router [::tpathexp::router]
+}
+proc cleanup_wiki {} {
+    $::router destroy
+    ::tpersist::db_disconnect $::db
+    removeDirectory $::sourceDir
+}
+proc allow_editor {request context action path} {
+    expr {[dict exists $context user] && [dict get $context user] eq "editor"}
+}
+proc csrf_editor {action request context token} {
+    if {$action eq "issue"} {return test-token}
+    expr {$token eq "test-token"}
+}
+proc mount_editor {{prefix /wiki}} {
+    ::web::wiki::mount $::router -store $::store -prefix $prefix \
+        -authorize ::allow_editor -csrf ::csrf_editor
+}
+proc post_edit {{body {title=Welcome&markdown=%23+Updated&revision=1&csrf=test-token}}} {
+    $::router dispatch [dict create method POST path /wiki/_edit/welcome \
+        headers {Content-Type application/x-www-form-urlencoded} body $body] {user editor}
+}
+
+test import-1 {directory creates folders, pages and GFM HTML} -setup setup_wiki -body {
+    ::web::wiki::mount $router -store $store
+    set result [$router dispatch {method GET path /wiki/guides/start-here}]
+    list [llength [::web::wiki::children $store /]] [dict get $result statusCode] \
+        [string match *<table>* [dict get $result body]]
+} -cleanup cleanup_wiki -result {2 200 1}
+
+test import-2 {repeat imports do not create revisions} -setup setup_wiki -body {
+    ::web::wiki::sync $store $sourceDir
+    llength [::web::wiki::history $store /welcome]
+} -cleanup cleanup_wiki -result 1
+
+test import-3 {source changes append a revision} -setup setup_wiki -body {
+    write_source Welcome.md "# Welcome\n\nChanged"
+    ::web::wiki::sync $store $sourceDir
+    set history [::web::wiki::history $store /welcome]
+    list [llength $history] [dict get [lindex $history 1] markdown]
+} -cleanup cleanup_wiki -result [list 2 "# Welcome\n\nHello world.\n"]
+
+test import-4 {removal hides pages but keeps history; re-add reactivates} -setup setup_wiki -body {
+    file delete [file join $sourceDir Welcome.md]
+    ::web::wiki::sync $store $sourceDir
+    catch {::web::wiki::load $store /welcome} message options
+    set missing [dict get $options -errorcode]
+    write_source Welcome.md "# Welcome\n\nHello world.\n"
+    set counts [::web::wiki::sync $store $sourceDir]
+    list $missing [dict get $counts reactivated] [llength [::web::wiki::history $store /welcome]]
+} -cleanup cleanup_wiki -result {{WEB CONTENT 404} 1 1}
+
+test import-5 {missing source cannot deactivate existing rows} -setup setup_wiki -body {
+    catch {::web::wiki::sync $store [file join $sourceDir missing]} message options
+    list [dict get $options -errorcode] [dict get [::web::wiki::load $store /welcome] active]
+} -cleanup cleanup_wiki -result {{WEB CONTENT 400} 1}
+
+test import-6 {URL collisions fail before changing the database} -setup setup_wiki -body {
+    write_source Other.md "# Welcome\n\nCollision"
+    catch {::web::wiki::sync $store $sourceDir} message options
+    list [dict get $options -errorcode] [dict get [::web::wiki::load $store /welcome] revision]
+} -cleanup cleanup_wiki -result {{WEB CONTENT 409} 1}
+
+test import-7 {symlinks are not followed} -setup setup_wiki -body {
+    file link -symbolic [file join $sourceDir linked.md] [file join $sourceDir Welcome.md]
+    catch {::web::wiki::sync $store $sourceDir} message options
+    dict get $options -errorcode
+} -cleanup cleanup_wiki -result {WEB CONTENT 400}
+
+test import-8 {browser edits survive unchanged source import} -setup setup_wiki -body {
+    ::web::wiki::save $store /welcome Welcome {Edited in browser} 1
+    ::web::wiki::sync $store $sourceDir
+    dict get [::web::wiki::load $store /welcome] markdown
+} -cleanup cleanup_wiki -result {Edited in browser}
+
+test import-9 {changed source supersedes editor content with history retained} -setup setup_wiki -body {
+    ::web::wiki::save $store /welcome Welcome Browser 1
+    write_source Welcome.md "# Welcome\n\nSource update"
+    ::web::wiki::sync $store $sourceDir
+    set history [::web::wiki::history $store /welcome]
+    list [llength $history] [dict get [lindex $history 1] markdown]
+} -cleanup cleanup_wiki -result {3 Browser}
+
+test import-10 {database-stage import failure rolls back earlier writes} -setup setup_wiki -body {
+    write_source New.md {# New}
+    file delete [file join $sourceDir Welcome.md]
+    file mkdir [file join $sourceDir Welcome]
+    catch {::web::wiki::sync $store $sourceDir} message options
+    set conflict [dict get $options -errorcode]
+    catch {::web::wiki::load $store /new} message options
+    list $conflict [dict get $options -errorcode] [dict get [::web::wiki::load $store /welcome] active]
+} -cleanup cleanup_wiki -result {{WEB CONTENT 409} {WEB CONTENT 404} 1}
+
+test persistence-1 {an imported and edited page survives connection closure} -setup setup_wiki -body {
+    set filename [file join $sourceDir persistence.sqlite]
+    set disk [::tpersist::db_connect -database $filename -autobegin 0]
+    ::web::wiki::init_schema $disk
+    set persisted [::web::wiki::create -connection $disk]
+    ::web::wiki::sync $persisted $sourceDir
+    ::web::wiki::save $persisted /welcome Welcome Durable 1
+    ::tpersist::db_disconnect $disk
+    set disk [::tpersist::db_connect -database $filename -autobegin 0]
+    try {
+        set persisted [::web::wiki::create -connection $disk]
+        list [dict get [::web::wiki::load $persisted /welcome] markdown] \
+            [llength [::web::wiki::history $persisted /welcome]]
+    } finally {::tpersist::db_disconnect $disk}
+} -cleanup cleanup_wiki -result {Durable 2}
+
+test isolation-1 {same URL in another domain is independent} -setup setup_wiki -body {
+    set other [::web::wiki::create -connection $db -domain other.test]
+    ::web::wiki::sync $other $sourceDir
+    ::web::wiki::save $other /welcome Welcome Other 1
+    list [dict get [::web::wiki::load $store /welcome] revision] \
+        [dict get [::web::wiki::load $other /welcome] markdown]
+} -cleanup cleanup_wiki -result {1 Other}
+
+test edit-1 {edit requires authorization and issues escaped form with Lexical} -setup setup_wiki -body {
+    mount_editor
+    set denied [$router dispatch {method GET path /wiki/_edit/welcome}]
+    set allowed [$router dispatch {method GET path /wiki/_edit/welcome} {user editor}]
+    list [dict get $denied statusCode] [dict get $allowed statusCode] \
+        [string match *markdown-editor.bundle.js* [dict get $allowed body]]
+} -cleanup cleanup_wiki -result {403 200 1}
+
+test edit-2 {valid form persists and redirects} -setup setup_wiki -body {
+    mount_editor
+    set result [post_edit]
+    list [dict get $result statusCode] [dict get $result headers location] \
+        [dict get [::web::wiki::load $store /welcome] markdown]
+} -cleanup cleanup_wiki -result {303 /wiki/welcome {# Updated}}
+
+test edit-3 {stale revision cannot overwrite an edit} -setup setup_wiki -body {
+    mount_editor
+    post_edit
+    list [dict get [post_edit] statusCode] [llength [::web::wiki::history $store /welcome]]
+} -cleanup cleanup_wiki -result {409 2}
+
+test edit-4 {invalid CSRF does not save} -setup setup_wiki -body {
+    mount_editor
+    set result [post_edit {title=x&markdown=x&revision=1&csrf=wrong}]
+    list [dict get $result statusCode] [dict get [::web::wiki::load $store /welcome] revision]
+} -cleanup cleanup_wiki -result {403 1}
+
+test edit-5 {duplicate or missing form fields are rejected} -setup setup_wiki -body {
+    mount_editor
+    list [dict get [post_edit {title=x&title=y&markdown=x&revision=1&csrf=test-token}] statusCode] \
+        [dict get [post_edit {title=x&markdown=x&csrf=test-token}] statusCode]
+} -cleanup cleanup_wiki -result {400 400}
+
+test edit-6 {SQL and HTML metacharacters remain data} -setup setup_wiki -body {
+    ::web::wiki::save $store /welcome {'); DROP TABLE web_content_items; --} {</textarea><script>alert(1)</script>} 1
+    mount_editor
+    set result [$router dispatch {method GET path /wiki/_edit/welcome} {user editor}]
+    list [llength [::web::wiki::children $store /]] \
+        [string match {*&lt;/textarea&gt;&lt;script&gt;*} [dict get $result body]]
+} -cleanup cleanup_wiki -result {2 1}
+
+test edit-7 {unchanged save does not add a revision} -setup setup_wiki -body {
+    set item [::web::wiki::load $store /welcome]
+    ::web::wiki::save $store /welcome [dict get $item title] [dict get $item markdown] 1
+    llength [::web::wiki::history $store /welcome]
+} -cleanup cleanup_wiki -result 1
+
+test edit-8 {browser CRLF form submission does not create a spurious revision} -setup setup_wiki -body {
+    set item [::web::wiki::load $store /welcome]
+    ::web::wiki::save $store /welcome Welcome [string map [list \n \r\n] [dict get $item markdown]] 1
+    llength [::web::wiki::history $store /welcome]
+} -cleanup cleanup_wiki -result 1
+
+test routes-1 {nested mount, root mount, HEAD and method handling} -setup setup_wiki -body {
+    ::web::wiki::mount $router -store $store -prefix /help/docs
+    set other [::tpathexp::router]
+    ::web::wiki::mount $other -store $store -prefix /
+    try {
+        list [dict get [$router dispatch {method GET path /help/docs/welcome}] statusCode] \
+            [dict get [$router dispatch {method HEAD path /help/docs/welcome}] body] \
+            [dict get [$router dispatch {method POST path /help/docs/welcome}] statusCode] \
+            [dict get [$other dispatch {method GET path /welcome}] statusCode]
+    } finally {$other destroy}
+} -cleanup cleanup_wiki -result {200 {} 405 200}
+
+test routes-2 {editing disabled by default} -setup setup_wiki -body {
+    ::web::wiki::mount $router -store $store
+    dict get [$router dispatch {method GET path /wiki/_edit/welcome}] statusCode
+} -cleanup cleanup_wiki -result 404
+
+test routes-3 {assets are allowlisted and traversal rejected} -setup setup_wiki -body {
+    ::web::wiki::mount $router -store $store
+    set results {}
+    foreach path {/wiki/_assets/style.css /wiki/_assets/nope /wiki/%2e%2e /wiki/guides%2fstart-here /wiki/%ZZ /wiki/%ff} {
+        lappend results [dict get [$router dispatch [dict create method GET path $path]] statusCode]
+    }
+    set results
+} -cleanup cleanup_wiki -result {200 404 400 400 400 400}
+
+test routes-4 {mount rejects partial editor policy and occupied prefixes} -setup setup_wiki -body {
+    set partial [catch {::web::wiki::mount $router -store $store -authorize ::allow_editor}]
+    ::web::wiki::mount $router -store $store
+    list $partial [catch {::web::wiki::mount $router -store $store}]
+} -cleanup cleanup_wiki -result {1 1}
+
+test routes-5 {raw HTML and unsafe Markdown links do not render executable HTML} -setup setup_wiki -body {
+    ::web::wiki::save $store /welcome Welcome {<script>alert(1)</script>
+
+[bad](javascript:alert%281%29)} 1
+    ::web::wiki::mount $router -store $store
+    set body [dict get [$router dispatch {method GET path /wiki/welcome}] body]
+    list [string match *<script>* $body] [string match *href=\"javascript:* $body]
+} -cleanup cleanup_wiki -result {0 0}
+
+test routes-6 {Lambda form bodies are decoded once} -setup setup_wiki -body {
+    mount_editor
+    set event [dict create version 2.0 rawPath /wiki/_edit/welcome \
+        requestContext {http {method POST}} isBase64Encoded true \
+        headers {content-type application/x-www-form-urlencoded} \
+        body [binary encode base64 {title=Welcome&markdown=%23+Lambda&revision=1&csrf=test-token}]]
+    set result [$router lambda $event {user editor}]
+    list [dict get $result statusCode] [dict get [::web::wiki::load $store /welcome] markdown]
+} -cleanup cleanup_wiki -result {303 {# Lambda}}
+
+cleanupTests
