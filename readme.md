@@ -3,6 +3,7 @@
 ## Rules
 - The extension is pure Tcl. It has no C or C++ source and requires no compiler to install.
 - Persist Markdown, source baselines and revisions through `tpersist`; render with `cmark_gfm` at request time.
+- Render page structure through `jinja2-tcl` templates with typed JSON contexts serialized by `tjson`.
 - The host owns the database connection, authentication, CSRF policy and `tpathexp` router.
 - Schema initialization and directory imports are explicit maintenance operations. Mounting never initializes or imports data.
 
@@ -29,7 +30,7 @@
 
 ## Dependencies and installation
 
-`ttrek.json` declares the Tcl runtime, `tpersist`, `tpathexp`, `cmark-gfm-tcl`, and `tdbcsqlite3` dependencies. The SQLite driver supplies its `tdbc` and `sqlite3` dependencies transitively. Lexical build dependencies remain in `package.json`. The selected ttrek registry must contain a `cmark-gfm-tcl` recipe; it is not present in the current local registry.
+`ttrek.json` declares the Tcl runtime, `tpersist`, `tpathexp`, `cmark-gfm-tcl`, `jinja2-tcl`, `tjson`, and `tdbcsqlite3` dependencies. The SQLite driver supplies its `tdbc` and `sqlite3` dependencies transitively. Lexical build dependencies remain in `package.json`. The selected ttrek registry must contain a `cmark-gfm-tcl` recipe; it is not present in the current local registry.
 
 | Dependency | Tcl package |
 | --- | --- |
@@ -37,6 +38,8 @@
 | tpersist 0.1.0+ | `tpersist` |
 | cmark-gfm-tcl 0.1.0+ | `cmark_gfm` |
 | tpathexp 1.1.0+ | `tpathexp` |
+| jinja2-tcl 0.1.0+ | `jinja2` |
+| tjson 1.0.26+ | `tjson` |
 | SQLite TDBC adapter | `tdbc::sqlite3` |
 
 Native dependencies must match the Tcl host ABI. This package itself is sourced Tcl and works with either loadable dependencies or dependencies registered statically by an embedded host.
@@ -94,6 +97,12 @@ The first ATX heading supplies the title, falling back to the filename stem. Fol
 Tables are `web_content_items` and `web_content_revisions`, keyed by collection, domain, path and (for revisions) revision number. No HTML is stored. Removing files marks rows inactive. Re-adding a URL reactivates it. An unchanged source baseline preserves browser edits; changed source Markdown adds a revision and becomes current. Browser title changes leave the URL fixed. Unchanged saves and imports do not add revisions. Markdown line endings are normalized to LF.
 
 Imports validate the complete tree before writing, then run in a transaction. Browser saves check the expected revision and update it conditionally in the same transaction as the history insert. A source file or submitted Markdown is limited to 1 MiB; URL-encoded form bodies are limited to 4 MiB. The host should also bound requests before reading them.
+
+## Page templates
+
+`assets/*.html.jinja` owns all HTML structure. The folder/blog index, content view and editor extend `page.html.jinja`; the index includes the card template inside a loop. Navigation, revision history, editor scripts and empty states are also rendered in templates. Tcl handlers supply data instead of concatenating HTML.
+
+`library/templates.tcl` loads and validates the trusted templates once per interpreter, then calls `jinja2::render` with a template dictionary and path. Context strings, arrays and booleans are explicitly typed through `tjson::typed_to_json`. Ordinary values are automatically escaped exactly once. Only `markdown_html`, produced by the safe-mode cmark renderer, uses `|safe`; raw Markdown, titles, form values and navigation labels never do. Content is data and is never parsed as a template. A host can supply its own trusted child template, as the company homepage does, to inherit the same layout.
 
 ## Visual editor
 

@@ -236,4 +236,26 @@ test routes-6 {Lambda form bodies are decoded once} -setup setup_wiki -body {
     list [dict get $result statusCode] [dict get [::web::wiki::load $store /welcome] markdown]
 } -cleanup cleanup_wiki -result {303 {# Lambda}}
 
+test templates-1 {Jinja escapes metadata once and does not interpret content as templates} -setup setup_wiki -body {
+    set title {A & <b>B</b> {{ 7 * 7 }}}
+    ::web::wiki::save $store /welcome $title {**Rendered Markdown**} 1
+    ::web::wiki::mount $router -store $store -navigation [list [list {Home & <em>news</em>} /]]
+    set item [dict get [$router dispatch {method GET path /wiki/welcome}] body]
+    set index [dict get [$router dispatch {method GET path /wiki}] body]
+    list [string match {*<strong>Rendered Markdown</strong>*} $item] \
+        [string match {*Home &amp; &lt;em&gt;news&lt;/em&gt;*} $item] \
+        [string match {*A &amp; &lt;b&gt;B&lt;/b&gt; {{ 7 * 7 }}*} $index] \
+        [string match {*&amp;lt;*} $index]
+} -cleanup cleanup_wiki -result {1 1 1 0}
+
+test templates-2 {empty arrays render the inherited layout and loop fallback} -setup setup_wiki -body {
+    file delete [file join $sourceDir Welcome.md] [file join $sourceDir Guides Start.md]
+    file delete [file join $sourceDir Guides]
+    ::web::wiki::sync $store $sourceDir
+    ::web::wiki::mount $router -store $store
+    set body [dict get [$router dispatch {method GET path /wiki}] body]
+    list [string match {*<!doctype html>*} $body] \
+        [string match {*No published content yet.*} $body] [string match {*\{%*} $body]
+} -cleanup cleanup_wiki -result {1 1 0}
+
 cleanupTests

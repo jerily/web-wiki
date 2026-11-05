@@ -7,7 +7,9 @@
     "tpersist": "^0.1.0",
     "tpathexp": "^1.1.0",
     "cmark-gfm-tcl": "^0.1.0",
-    "tdbcsqlite3": ">=1.1.8"
+    "tdbcsqlite3": ">=1.1.8",
+    "jinja2-tcl": "^0.1.0",
+    "tjson": "^1.0.26"
   },
   "devDependencies": {}
 }

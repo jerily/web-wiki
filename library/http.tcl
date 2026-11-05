@@ -1,4 +1,5 @@
 proc ::web::content::mount {kind router args} {
+    init_templates
     set config [options [dict create -store {} -prefix /$kind -authorize {} -csrf {} -navigation {}] {*}$args]
     set store [dict get $config -store]
     if {$store eq {} || [dict get $store kind] ne $kind} {error "-store must be a $kind store"}
@@ -30,16 +31,6 @@ proc ::web::content::mount {kind router args} {
     return $config
 }
 
-proc ::web::content::escape {value} {
-    string map {& &amp; < &lt; > &gt; \" &quot; ' &#39;} $value
-}
-
-proc ::web::content::template {name replacements} {
-    variable root
-    # Templates are external assets; replacements are escaped at their call sites.
-    string map $replacements [read_file [file join $root assets $name]]
-}
-
 proc ::web::content::response {status body {type {text/html; charset=utf-8}}} {
     dict create statusCode $status body $body headers [dict create \
         content-type $type x-content-type-options nosniff cache-control no-store \
@@ -50,19 +41,6 @@ proc ::web::content::url {config path} {
     set prefix [dict get $config -prefix]
     if {$path eq "/"} {return [expr {$prefix eq {} ? "/" : $prefix}]}
     return $prefix$path
-}
-
-proc ::web::content::shell {config title body {editing 0}} {
-    set nav {}
-    foreach link [dict get $config -navigation] {
-        lassign $link label href
-        append nav "<a href=\"[escape $href]\">[escape $label]</a> "
-    }
-    set assets [dict get $config -prefix]/_assets
-    set script {}
-    if {$editing} {set script "<script defer src=\"$assets/markdown-editor.bundle.js\"></script>"}
-    template page.html [list @title@ [escape $title] @brand@ [escape [dict get $config -store -title]] \
-        @home@ [url $config /] @nav@ $nav @assets@ $assets @body@ $body @script@ $script]
 }
 
 proc ::web::content::decode {value {form 0}} {
@@ -147,29 +125,33 @@ proc ::web::content::view {config path} {
         if {[dict get $store kind] eq "blog" && $path eq "/"} {
             set entries [posts $store]
         } else {set entries [children $store $path]}
-        set cards {}
+        set rows {}
         foreach entry $entries {
-            append cards [template card.html [list @url@ [url $config [dict get $entry path]] \
-                @title@ [escape [dict get $entry title]] @kind@ [dict get $entry item_type] \
-                @date@ [dict get $entry published_at]]]
+            lappend rows [dict create url [url $config [dict get $entry path]] \
+                title [dict get $entry title] kind [dict get $entry item_type] \
+                date [dict get $entry published_at]]
         }
-        if {$cards eq {}} {set cards {<p>No published content yet.</p>}}
-        set body "<h1>[escape $title]</h1><div class=\"cards\">$cards</div>"
+        set fields [text_fields [dict create title $title]]
+        dict set fields entries [rows_field $rows]
+        set html [render_page $config index.html.jinja $fields]
     } else {
         set revisions {}
         foreach revision [history $store $path] {
-            append revisions "<li>Revision [dict get $revision revision] · [dict get $revision created_at]</li>"
+            lappend revisions [dict create number [dict get $revision revision] \
+                created_at [dict get $revision created_at]]
         }
-        set edit {}
+        set editUrl {}
         if {[dict get $config -authorize] ne {}} {
-            set edit "<a class=\"button\" href=\"[dict get $config -prefix]/_edit$path\">Edit</a>"
+            set editUrl [dict get $config -prefix]/_edit$path
         }
-        set body [template item.html [list @title@ [escape $title] \
-            @parent@ [url $config [dict get $item parent_path]] @edit@ $edit \
-            @markdown@ [::cmark_gfm::render_gfm_html [dict get $item markdown]] \
-            @date@ [dict get $item published_at] @revisions@ $revisions]]
+        set fields [text_fields [dict create title $title \
+            parent [url $config [dict get $item parent_path]] edit_url $editUrl \
+            markdown_html [::cmark_gfm::render_gfm_html [dict get $item markdown]] \
+            date [dict get $item published_at]]]
+        dict set fields revisions [rows_field $revisions]
+        set html [render_page $config item.html.jinja $fields]
     }
-    response 200 [shell $config $title $body]
+    response 200 $html
 }
 
 proc ::web::content::edit {config request context path} {
@@ -192,10 +174,11 @@ proc ::web::content::edit {config request context path} {
     set token [{*}$csrf issue $request $context {}]
     if {$token eq {}} {error "CSRF callback returned an empty token"}
     set title "Edit [dict get $item title]"
-    set body [template edit.html [list @heading@ [escape $title] @title@ [escape [dict get $item title]] \
-        @markdown@ [escape [dict get $item markdown]] @csrf@ [escape $token] \
-        @revision@ [dict get $item revision] @cancel@ [url $config $path]]]
-    response 200 [shell $config $title $body 1]
+    set fields [text_fields [dict create title $title item_title [dict get $item title] \
+        markdown [dict get $item markdown] csrf $token revision [dict get $item revision] \
+        cancel [url $config $path]]]
+    dict set fields editing {BOOL 1}
+    response 200 [render_page $config edit.html.jinja $fields]
 }
 
 proc ::web::content::dispatch {config action request context params} {
