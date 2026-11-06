@@ -4,10 +4,10 @@
 <p>Save publishes a new revision. The source directory is updated separately.</p>
 <form method="post">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <input type="hidden" name="revision" value="{{ revision }}">
+  {% if not creating %}<input type="hidden" name="revision" value="{{ revision }}">{% endif %}
   <label>Title<input name="title" value="{{ item_title }}" maxlength="300" required></label>
   <label for="markdown">Content</label>
   <textarea id="markdown" name="markdown" rows="20" data-markdown-editor>{{ markdown }}</textarea>
-  <div class="actions"><button type="submit">Publish revision</button><a href="{{ cancel }}">Cancel</a></div>
+  <div class="actions"><button type="submit">{% if creating %}Publish page{% else %}Publish revision{% endif %}</button><a href="{{ cancel }}">Cancel</a></div>
 </form>
 {% endblock %}

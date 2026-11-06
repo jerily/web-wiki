@@ -49,7 +49,7 @@ proc ::web::wiki::header {request name} {
     return {}
 }
 
-proc ::web::wiki::form {request} {
+proc ::web::wiki::form {request {required {title markdown revision csrf}}} {
     if {[string tolower [string trim [lindex [split [header $request content-type] {;}] 0]]] ne \
         "application/x-www-form-urlencoded"} {fail 415 "expected URL-encoded form data"}
     if {![dict exists $request body]} {fail 400 "missing form body"}
@@ -67,7 +67,7 @@ proc ::web::wiki::form {request} {
         if {[dict exists $fields $key]} {fail 400 "duplicate form field"}
         dict set fields $key $value
     }
-    foreach field {title markdown revision csrf} {
+    foreach field $required {
         if {![dict exists $fields $field]} {fail 400 "missing form field: $field"}
     }
     return $fields
@@ -96,7 +96,7 @@ proc ::web::wiki::view {config path} {
                 title [dict get $entry title] kind [dict get $entry item_type] \
                 date {}]
         }
-        set fields [text_fields [dict create title $title]]
+        set fields [text_fields [dict create title $title create_url [create_url $config $path]]]
         dict set fields entries [rows_field $rows]
         set html [render_page $config index.html.jinja $fields]
     } else {
@@ -114,12 +114,42 @@ proc ::web::wiki::view {config path} {
         regsub {^<h1>.*?</h1>\n} $markdownHtml {} markdownHtml
         set fields [text_fields [dict create title $title \
             parent [url $config [dict get $item parent_path]] edit_url $editUrl \
+            create_url [create_url $config [dict get $item parent_path]] \
             markdown_html $markdownHtml \
             date {}]]
         dict set fields revisions [rows_field $revisions]
         set html [render_page $config item.html.jinja $fields]
     }
     response 200 $html
+}
+
+proc ::web::wiki::create_url {config parent} {
+    if {[dict get $config -authorize] eq {} || ![dict get $config -config allow_create]} {return {}}
+    return [dict get $config -prefix]/_new[string trimright $parent /]
+}
+
+proc ::web::wiki::new {config request context parent} {
+    if {[create_url $config $parent] eq {}} {fail 404 "creation is disabled"}
+    set authorize [dict get $config -authorize]
+    if {![{*}$authorize $request $context create $parent]} {fail 403 "creation is not authorized"}
+    set csrf [dict get $config -csrf]
+    set store [dict get $config -store]
+    if {[dict get $request method] eq "POST"} {
+        set fields [form $request {title markdown csrf}]
+        if {![{*}$csrf verify $request $context [dict get $fields csrf]]} {fail 403 "invalid CSRF token"}
+        set item [add $store $parent [dict get $fields title] [dict get $fields markdown]]
+        set result [response 303 {}]
+        dict set result headers location [url $config [dict get $item path]]
+        return $result
+    }
+    if {[dict get [load $store $parent] item_type] ne "folder"} {fail 400 "parent must be a folder"}
+    set token [{*}$csrf issue $request $context {}]
+    if {$token eq {}} {error "CSRF callback returned an empty token"}
+    set fields [text_fields [dict create title {New page} item_title {} \
+        markdown {} csrf $token cancel [url $config $parent]]]
+    dict set fields editing {BOOL 1}
+    dict set fields creating {BOOL 1}
+    response 200 [render_page $config edit.html.jinja $fields]
 }
 
 proc ::web::wiki::edit {config request context path} {
@@ -154,6 +184,7 @@ proc ::web::wiki::dispatch {config action request context params} {
         switch -- $action {
             asset {return [asset $params]}
             view {return [view $config [request_path $params]]}
+            new {return [new $config $request $context [request_path $params]]}
             edit {return [edit $config $request $context [request_path $params]]}
         }
     } trap {WEB WIKI} {message options} {

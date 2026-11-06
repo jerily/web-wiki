@@ -53,6 +53,8 @@ proc ::web::wiki::render_page {config name fields {extraTemplates {}}} {
         home [url $config /] assets [dict get $config -prefix]/_assets]]
     dict set context navigation [rows_field $navigation]
     dict set context editing {BOOL 0}
+    dict set context creating {BOOL 0}
+    dict set context create_url {S {}}
     set context [dict merge $context $fields]
     # Extra templates come from the trusted host, never a request or content row.
     set available [page_templates $config $extraTemplates]

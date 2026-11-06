@@ -17,7 +17,7 @@
 ## Principles
 - `::web::wiki` owns its schema, persistence, routes, templates and editor assets. No procedure or runtime dependency is shared with web-blog.
 - Database connections and routers belong to their creating interpreter. Create one of each per server worker.
-- One source directory owns each `domain` pair. A second sync for the same pair replaces its published inventory.
+- One source directory owns each `domain` pair. A second sync for the same pair replaces its imported inventory; browser-created pages remain independent.
 
 ## Best Practices
 - Use a dedicated `tpersist` connection with `-autobegin 0`; explicit import/save transactions commit atomically. If the caller already has a transaction, it owns the final commit.
@@ -97,10 +97,26 @@ $router destroy
 | `load store /path` | Active page/folder dictionary, or `WEB WIKI 404` |
 | `children store /folder` | Active immediate children, folders first |
 | `history store /path` | Revision dictionaries, newest first, including Markdown |
+| `add store /parent title markdown` | New page at a title-derived URL, with revision 1 |
 | `save store /path title markdown expectedRevision` | Updated page; stale revision raises `WEB WIKI 409` |
 | `mount router -store store ?options...?` | Mount configuration; see [MOUNTING.md](MOUNTING.md) |
 
-`save` is a trusted application API. Browser authorization and CSRF checks happen in mounted HTTP handlers. Pages are created from source files; the initial editor revises existing pages only. Folders are maintained by imports.
+`add` and `save` are trusted application APIs. Browser authorization and CSRF checks happen in mounted HTTP handlers. Folders are maintained by imports. Browser creation uses an existing active folder; its title determines the slug.
+
+## Browser creation
+
+Enable browser creation with `-config {allow_create true}` on the mount, alongside
+both editor callbacks. The flag defaults to `false` and must be a boolean. It does
+not enable editing by itself. The index and item pages show **New page** in edit
+mode; the form uses the existing local Markdown editor. Creation is authorized,
+CSRF checked and stored atomically with revision 1. Existing URLs, including
+inactive items, return 409 instead of being overwritten.
+
+Browser-created items have an empty `source_path` and are stored only in SQLite.
+Sync preserves these items and their parent folders, even when a source folder
+is removed. A source file colliding with a browser-created URL aborts sync with
+409; it cannot silently replace that item. Source-backed items retain their
+existing import/update/deactivation behavior.
 
 ## Source and persistence behavior
 
@@ -162,7 +178,7 @@ Tests exercise real `tpersist`, SQLite, `cmark_gfm` and `tpathexp`, including so
 Public content/folder routes, an allowlist of local assets, and optional editor forms. Source directories and database connections are trusted host configuration.
 
 ### Protections
-Editing is disabled unless both authorization and CSRF callbacks are supplied. Every editor GET and POST checks authorization. POST verifies CSRF and expected revision. SQL values are bound by `tpersist`; metadata is HTML-escaped; content is rendered with cmark's default safe HTML mode. Request paths reject traversal, invalid UTF-8 and encoded separators. Responses carry a restrictive CSP and `nosniff`.
+Editing is disabled unless both authorization and CSRF callbacks are supplied. Every editor GET and POST checks authorization. Creation requires `allow_create true`. Every write verifies CSRF; updates also verify the expected revision. SQL values are bound by `tpersist`; metadata is HTML-escaped; content is rendered with cmark's default safe HTML mode. Request paths reject traversal, invalid UTF-8 and encoded separators. Responses carry a restrictive CSP and `nosniff`.
 
 ### Pending
-Production identity/session management, TLS, rate limiting and transport body limits remain host responsibilities. This release has no upload API, creation form, revision restore UI, search, pagination, scheduled publishing or non-SQLite certification.
+Production identity/session management, TLS, rate limiting and transport body limits remain host responsibilities. This release has no upload API, revision restore UI, search, pagination, scheduled publishing or non-SQLite certification.
