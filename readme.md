@@ -114,6 +114,8 @@ Imports validate the complete tree before writing, then run in a transaction. Br
 
 ## Page templates
 
+The saved title supplies the visible page heading. Rendering omits a leading Markdown H1 to avoid a duplicate title; stored Markdown and browser-edited URLs remain unchanged.
+
 `assets/*.html.jinja` owns all HTML structure. The folder index, content view and editor extend `page.html.jinja`; the index includes the card template inside a loop. Navigation, revision history, editor scripts and empty states are also rendered in templates. Tcl handlers supply data instead of concatenating HTML.
 
 `library/templates.tcl` loads and validates the trusted templates once per interpreter, then calls `jinja2::render` with a template dictionary and path. Context strings, arrays and booleans are explicitly typed through `tjson::typed_to_json`. Ordinary values are automatically escaped exactly once. Only `markdown_html`, produced by the safe-mode cmark renderer, uses `|safe`; raw Markdown, titles, form values and navigation labels never do. Content is data and is never parsed as a template. A host can supply its own trusted child template, as the company homepage does, to inherit the same layout.

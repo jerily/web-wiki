@@ -6,7 +6,10 @@
 </div>
 {% if date %}<p class="eyebrow">{{ date }}</p>{% endif %}
 {# Only safe-mode cmark output is marked safe; metadata keeps automatic escaping. #}
-<article aria-label="{{ title }}">{{ markdown_html|safe }}</article>
+<article aria-label="{{ title }}">
+  <h1>{{ title }}</h1>
+  {{ markdown_html|safe }}
+</article>
 <details>
   <summary>Revision history</summary>
   <ol>{% for revision in revisions %}<li>Revision {{ revision.number }} · {{ revision.created_at }}</li>{% endfor %}</ol>

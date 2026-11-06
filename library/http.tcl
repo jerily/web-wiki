@@ -109,9 +109,12 @@ proc ::web::wiki::view {config path} {
         if {[dict get $config -authorize] ne {}} {
             set editUrl [dict get $config -prefix]/_edit$path
         }
+        set markdownHtml [::cmark_gfm::render_gfm_html [dict get $item markdown]]
+        # The template renders the saved title; omit the Markdown's leading title.
+        regsub {^<h1>.*?</h1>\n} $markdownHtml {} markdownHtml
         set fields [text_fields [dict create title $title \
             parent [url $config [dict get $item parent_path]] edit_url $editUrl \
-            markdown_html [::cmark_gfm::render_gfm_html [dict get $item markdown]] \
+            markdown_html $markdownHtml \
             date {}]]
         dict set fields revisions [rows_field $revisions]
         set html [render_page $config item.html.jinja $fields]

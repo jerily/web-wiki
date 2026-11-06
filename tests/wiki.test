@@ -185,6 +185,22 @@ test edit-8 {browser CRLF form submission does not create a spurious revision} -
     llength [::web::wiki::history $store /welcome]
 } -cleanup cleanup_wiki -result 1
 
+test edit-9 {title-only edits update the visible heading without changing the URL or Markdown} -setup setup_wiki -body {
+    mount_editor
+    set original [::web::wiki::load $store /welcome]
+    set result [post_edit {title=Renamed+%26+%3Ctitle%3E&markdown=%23+Welcome%0A%0AHello+world.%0A&revision=1&csrf=test-token}]
+    set item [::web::wiki::load $store /welcome]
+    set body [dict get [$router dispatch {method GET path /wiki/welcome}] body]
+    set index [dict get [$router dispatch {method GET path /wiki}] body]
+    list [dict get $result statusCode] [dict get $result headers location] \
+        [dict get $item path] [dict get $item title] [dict get $item revision] \
+        [expr {[dict get $item markdown] eq [dict get $original markdown]}] \
+        [string match {*<h1>Renamed &amp; &lt;title&gt;</h1>*} $body] \
+        [string match {*<h1>Welcome</h1>*} $body] \
+        [string match {*<p>Hello world.</p>*} $body] \
+        [string match {*href="/wiki/welcome"*<h2>Renamed &amp; &lt;title&gt;</h2>*} $index]
+} -cleanup cleanup_wiki -result {303 /wiki/welcome /welcome {Renamed & <title>} 2 1 1 0 1 1}
+
 test routes-1 {nested mount, root mount, HEAD and method handling} -setup setup_wiki -body {
     ::web::wiki::mount $router -store $store -prefix /help/docs
     set other [::tpathexp::router]
@@ -247,6 +263,21 @@ test templates-1 {Jinja escapes metadata once and does not interpret content as 
         [string match {*A &amp; &lt;b&gt;B&lt;/b&gt; {{ 7 * 7 }}*} $index] \
         [string match {*&amp;lt;*} $index]
 } -cleanup cleanup_wiki -result {1 1 1 0}
+
+test templates-title {only a leading Markdown H1 is replaced by the saved title} -setup setup_wiki -body {
+    ::web::wiki::mount $router -store $store
+    set revision 1
+    set results {}
+    foreach markdown [list "# Old\n\n# Section\n\nBody.\n" \
+            "Old\nheading\n===\n\n# Section\n\nBody.\n" "Paragraph.\n\n# Section\n\nBody.\n"] {
+        ::web::wiki::save $store /welcome Renamed $markdown $revision
+        incr revision
+        set body [dict get [$router dispatch {method GET path /wiki/welcome}] body]
+        lappend results [regexp -all {<h1>} $body] \
+            [string match {*<h1>Renamed</h1>*<h1>Section</h1>*<p>Body.</p>*} $body]
+    }
+    lappend results [string match {*<p>Paragraph.</p>*} $body]
+} -cleanup cleanup_wiki -result {2 1 2 1 2 1 1}
 
 test templates-2 {empty arrays render the inherited layout and loop fallback} -setup setup_wiki -body {
     file delete [file join $sourceDir Welcome.md] [file join $sourceDir Guides Start.md]
