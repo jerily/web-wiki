@@ -23,7 +23,7 @@ proc ::web::content::create {kind args} {
 }
 
 # Explicit maintenance operation. Mounting and handling requests never create schema.
-proc ::web::content::init_schema {connection} {
+proc ::web::content::initdb {connection} {
     set identity {
         collection {type varchar length 16 not_null 1}
         domain {type varchar length 253 not_null 1}

@@ -12,7 +12,7 @@ proc setup_wiki {} {
     write_source Welcome.md "# Welcome\n\nHello world.\n"
     write_source Guides/Start.md "# Start Here\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
     set ::db [::tpersist::db_connect -database :memory: -autobegin 0]
-    ::web::wiki::init_schema $::db
+    ::web::wiki::initdb $::db
     set ::store [::web::wiki::create -connection $::db -domain example.test]
     ::web::wiki::sync $::store $::sourceDir
     set ::router [::tpathexp::router]
@@ -111,7 +111,7 @@ test import-10 {database-stage import failure rolls back earlier writes} -setup 
 test persistence-1 {an imported and edited page survives connection closure} -setup setup_wiki -body {
     set filename [file join $sourceDir persistence.sqlite]
     set disk [::tpersist::db_connect -database $filename -autobegin 0]
-    ::web::wiki::init_schema $disk
+    ::web::wiki::initdb $disk
     set persisted [::web::wiki::create -connection $disk]
     ::web::wiki::sync $persisted $sourceDir
     ::web::wiki::save $persisted /welcome Welcome Durable 1
@@ -257,5 +257,23 @@ test templates-2 {empty arrays render the inherited layout and loop fallback} -s
     list [string match {*<!doctype html>*} $body] \
         [string match {*No published content yet.*} $body] [string match {*\{%*} $body]
 } -cleanup cleanup_wiki -result {1 1 0}
+
+test templates-1 {master config applies to all routes and stays local to its mount} -setup setup_wiki -body {
+    set master {<!doctype html><main data-host="custom">{% block body %}{% endblock %}</main>}
+    ::web::wiki::mount $router -store $store -prefix /custom \
+        -config [dict create master_template $master] -authorize allow_editor -csrf csrf_editor
+    ::web::wiki::mount $router -store $store -prefix /default
+    set results {}
+    foreach path {/custom /custom/welcome /custom/_edit/welcome /default/welcome} {
+        set response [$router dispatch [dict create method GET path $path] {user editor}]
+        lappend results [dict get $response statusCode] [string match {*data-host="custom"*} [dict get $response body]]
+    }
+    set results
+} -cleanup cleanup_wiki -result {200 1 200 1 200 1 200 0}
+
+test templates-2 {invalid host templates fail before adding routes} -setup setup_wiki -body {
+    set invalid [catch {::web::wiki::mount $router -store $store -config {master_template {{% invalid %}}}}]
+    list $invalid [dict get [$router match GET /wiki] statusCode]
+} -cleanup cleanup_wiki -result {1 404}
 
 cleanupTests
