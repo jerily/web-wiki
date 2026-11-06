@@ -1,10 +1,12 @@
-# Web package mount contract
+# Web package lifecycle contract
 
-Every web package provides `::web::<name>::mount` in **`library/mount.tcl`**. The Tcl package name is `web-<name>`; use an underscore in the namespace component if a future name contains additional hyphens. The package loader sources this file. `web-wiki` and `web-blog` are the reference implementations.
+Every web package provides `::web::<name>::mount` in **`library/mount.tcl`**. The Tcl package name is `web-<name>`; use an underscore in the namespace component if a future name contains additional hyphens. The package loader sources this file and `library/initdb.tcl`, which provides `::web::<name>::initdb connection`. `web-wiki` and `web-blog` are the reference implementations.
 
 ```tcl
 package require web-wiki
 package require web-blog
+::web::wiki::initdb $connection
+::web::blog::initdb $connection
 ::web::wiki::mount $router -store $wiki -prefix /wiki
 ::web::blog::mount $router -store $blog -prefix /blog
 ```
@@ -17,6 +19,7 @@ The first positional argument is an existing `tpathexp` router. Remaining argume
 | `-prefix` | Default `/wiki` or `/blog`; canonical absolute slug path, or `/` for a root mount |
 | `-authorize` | Optional command prefix; required with `-csrf` to enable editing |
 | `-csrf` | Optional command prefix; required with `-authorize` |
+| `-config` | Optional dict: `master_template` is trusted master template source; `templates` maps template names to trusted source |
 | `-navigation` | List of `{label /local-path}` pairs for the page header |
 
 Call `create` with `-connection`, optional `-domain`, and optional `-title`. Store instances isolate content by package collection and domain. Sharing a connection across wiki/blog instances in one interpreter is supported. A root mount consumes all otherwise unmatched GET paths, so register it last.
@@ -45,3 +48,31 @@ CSRF callback contract: `callback issue request context {}` returns a nonempty t
 POST accepts `application/x-www-form-urlencoded` fields `title`, `markdown`, `revision` and `csrf`. Lambda `isBase64Encoded` bodies are supported. Duplicate fields, missing fields, invalid encodings and oversize content are rejected. Content errors use Tcl error codes `{WEB CONTENT <HTTP-status>}` and are converted by handlers; unexpected errors remain visible to the host.
 
 The shared `::web::content` implementation is distributed with `web-wiki`; `web-blog` reuses it explicitly. Future packages should follow this entry-point contract without copying the shared renderer/editor or taking over host lifecycle responsibilities.
+
+## Host templates
+
+Each mount accepts its own `-config` dict. `master_template` replaces the
+`page.html.jinja` layout inherited by the index, item and editor templates. It
+must provide `{% block body %}{% endblock %}` and should preserve the styles and
+conditional editor script from the default layout. `templates` supplies other
+named template sources (and may override package templates). Unknown config
+keys and invalid templates fail before routes are registered. Configuration
+comes from the trusted host, never request parameters or Markdown content.
+
+```tcl
+set config [dict create master_template $masterSource]
+::web::wiki::mount $router -store $wiki -prefix /wiki -config $config
+::web::blog::mount $router -store $blog -prefix /blog -config $config
+```
+
+Template context includes `title`, `brand`, `home`, `assets`, `navigation`, and
+`editing`. Mount configuration does not change defaults for other mounts.
+`jerily-company-site/library/master.html.jinja` demonstrates a shared host layout.
+
+## Schema initialization
+
+`::web::<name>::initdb connection` creates that package's schema on a caller-owned
+`tpersist` connection and is safe to repeat. It neither opens/closes the connection
+nor imports content, mounts routes, or commits a caller's transaction. Hosts call
+each package's entry point explicitly during maintenance. Wiki and blog currently
+share tables; calling both remains safe and keeps schema ownership in each package.

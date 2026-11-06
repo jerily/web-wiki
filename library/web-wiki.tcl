@@ -14,5 +14,6 @@ namespace eval ::web::wiki {}
 source [file join $::web::content::root library content.tcl]
 source [file join $::web::content::root library templates.tcl]
 source [file join $::web::content::root library http.tcl]
+source [file join $::web::content::root library initdb.tcl]
 source [file join $::web::content::root library mount.tcl]
 package provide web-wiki 0.1.0

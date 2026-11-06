@@ -1,6 +1,12 @@
 proc ::web::content::mount {kind router args} {
     init_templates
-    set config [options [dict create -store {} -prefix /$kind -authorize {} -csrf {} -navigation {}] {*}$args]
+    set config [options [dict create -store {} -prefix /$kind -authorize {} -csrf {} -navigation {} -config {}] {*}$args]
+    set settings [options {master_template {} templates {}} {*}[dict get $config -config]]
+    dict set config -config $settings
+    set available [page_templates $config]
+    dict for {name text} $available {
+        ::jinja2::validate $text -templates $available -path $name
+    }
     set store [dict get $config -store]
     if {$store eq {} || [dict get $store kind] ne $kind} {error "-store must be a $kind store"}
     set prefix [string trimright [dict get $config -prefix] /]

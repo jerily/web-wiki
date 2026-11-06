@@ -29,6 +29,18 @@ proc ::web::content::rows_field {rows} {
     return [list L $values]
 }
 
+# Host configuration is local to a mount; shared defaults remain unchanged.
+proc ::web::content::page_templates {config {extraTemplates {}}} {
+    variable templates
+    init_templates
+    set settings [dict get $config -config]
+    set available [dict merge $templates [dict get $settings templates] $extraTemplates]
+    if {[dict get $settings master_template] ne {}} {
+        dict set available page.html.jinja [dict get $settings master_template]
+    }
+    return $available
+}
+
 proc ::web::content::render_page {config name fields {extraTemplates {}}} {
     variable templates
     init_templates
@@ -43,7 +55,7 @@ proc ::web::content::render_page {config name fields {extraTemplates {}}} {
     dict set context editing {BOOL 0}
     set context [dict merge $context $fields]
     # Extra templates come from the trusted host, never a request or content row.
-    set available [dict merge $templates $extraTemplates]
+    set available [page_templates $config $extraTemplates]
     ::jinja2::render [dict get $available $name] \
         [::tjson::typed_to_json [list M $context]] -templates $available -path $name
 }

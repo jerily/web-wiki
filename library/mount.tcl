@@ -3,7 +3,6 @@ proc ::web::wiki::mount {router args} {
     ::web::content::mount wiki $router {*}$args
 }
 proc ::web::wiki::create {args} {::web::content::create wiki {*}$args}
-proc ::web::wiki::init_schema {connection} {::web::content::init_schema $connection}
 proc ::web::wiki::sync {store directory} {::web::content::sync $store $directory}
 proc ::web::wiki::load {store path} {::web::content::load $store $path}
 proc ::web::wiki::children {store path} {::web::content::children $store $path}

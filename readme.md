@@ -73,7 +73,7 @@ package require web-wiki 0.1.0
 set db [::tpersist::db_connect -database company.sqlite -autobegin 0]
 
 # Maintenance only; do this before starting request workers.
-::web::wiki::init_schema $db
+::web::wiki::initdb $db
 set wiki [::web::wiki::create -connection $db -domain example.com -title {Company Wiki}]
 ::web::wiki::sync $wiki ./content/wiki
 
@@ -91,7 +91,7 @@ $router destroy
 | Command | Result |
 | --- | --- |
 | `create -connection db ?-domain default? ?-title Wiki?` | Store configuration |
-| `init_schema db` | Idempotent creation of the two shared tables |
+| `initdb db` | Idempotent creation of the two shared tables |
 | `sync store directory` | Counts: `created`, `revised`, `reactivated`, `deactivated` |
 | `load store /path` | Active page/folder dictionary, or `WEB CONTENT 404` |
 | `children store /folder` | Active immediate children, folders first |
@@ -131,6 +131,12 @@ npm run build
 ```
 
 Versions and transitive dependencies are pinned in `package-lock.json`. Third-party MIT licenses are under `frontend/`. No CDN is used.
+
+Mount accepts `-config [dict create master_template $trustedTemplateSource]` to
+replace the shared page layout for that instance. The optional `templates` config
+key supplies additional named template sources. See the mount contract for the
+layout blocks and context. `library/initdb.tcl` supplies the public `initdb`
+entry point; hosts invoke it explicitly before importing either collection.
 
 ## Verification
 
