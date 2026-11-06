@@ -8,15 +8,16 @@
 - Schema initialization and directory imports are explicit maintenance operations. Mounting never initializes or imports data.
 
 ## Commandments
-- Keep all queries scoped by collection and domain.
+- Own `web_wiki_items` and `web_wiki_revisions`; scope every query by domain.
+- Install independently of web-blog. Do not add a shared content package or compatibility layer.
 - Do not evaluate content as Tcl, SQL or a template program.
 - Keep history when a source disappears. Do not treat a missing directory as an empty source.
 - Use the public mount convention in [MOUNTING.md](MOUNTING.md) for future web packages.
 
 ## Principles
-- `::web::wiki` owns wiki behavior; shared publishing code lives in `::web::content` inside this distribution. `web-blog` depends on this package and reuses that code and the editor assets.
+- `::web::wiki` owns its schema, persistence, routes, templates and editor assets. No procedure or runtime dependency is shared with web-blog.
 - Database connections and routers belong to their creating interpreter. Create one of each per server worker.
-- One source directory owns each `(collection, domain)` pair. A second sync for the same pair replaces its published inventory.
+- One source directory owns each `domain` pair. A second sync for the same pair replaces its published inventory.
 
 ## Best Practices
 - Use a dedicated `tpersist` connection with `-autobegin 0`; explicit import/save transactions commit atomically. If the caller already has a transaction, it owns the final commit.
@@ -91,12 +92,12 @@ $router destroy
 | Command | Result |
 | --- | --- |
 | `create -connection db ?-domain default? ?-title Wiki?` | Store configuration |
-| `initdb db` | Idempotent creation of the two shared tables |
+| `initdb db` | Idempotent creation of the two wiki tables |
 | `sync store directory` | Counts: `created`, `revised`, `reactivated`, `deactivated` |
-| `load store /path` | Active page/folder dictionary, or `WEB CONTENT 404` |
+| `load store /path` | Active page/folder dictionary, or `WEB WIKI 404` |
 | `children store /folder` | Active immediate children, folders first |
 | `history store /path` | Revision dictionaries, newest first, including Markdown |
-| `save store /path title markdown expectedRevision` | Updated page; stale revision raises `WEB CONTENT 409` |
+| `save store /path title markdown expectedRevision` | Updated page; stale revision raises `WEB WIKI 409` |
 | `mount router -store store ?options...?` | Mount configuration; see [MOUNTING.md](MOUNTING.md) |
 
 `save` is a trusted application API. Browser authorization and CSRF checks happen in mounted HTTP handlers. Pages are created from source files; the initial editor revises existing pages only. Folders are maintained by imports.
@@ -107,13 +108,13 @@ The source root contains Markdown directly; choose a domain-specific subdirector
 
 The first ATX heading supplies the title, falling back to the filename stem. Folder names and titles become lowercase ASCII slugs: whitespace/dashes collapse, punctuation is removed, and an empty result becomes `wiki-item`. `Policies/Privacy.md` headed `# Privacy Policy` becomes `/policies/privacy-policy`, independent of the mount prefix. Duplicate canonical paths abort the entire import. Changing a source heading changes its URL; the prior URL is deactivated with its history intact.
 
-Tables are `web_content_items` and `web_content_revisions`, keyed by collection, domain, path and (for revisions) revision number. No HTML is stored. Removing files marks rows inactive. Re-adding a URL reactivates it. An unchanged source baseline preserves browser edits; changed source Markdown adds a revision and becomes current. Browser title changes leave the URL fixed. Unchanged saves and imports do not add revisions. Markdown line endings are normalized to LF.
+Tables are `web_wiki_items` and `web_wiki_revisions`, keyed by domain, path and (for revisions) revision number. Wiki has no blog publication-date or collection column. No HTML is stored. Removing files marks rows inactive. Re-adding a URL reactivates it. An unchanged source baseline preserves browser edits; changed source Markdown adds a revision and becomes current. Browser title changes leave the URL fixed. Unchanged saves and imports do not add revisions. Markdown line endings are normalized to LF.
 
 Imports validate the complete tree before writing, then run in a transaction. Browser saves check the expected revision and update it conditionally in the same transaction as the history insert. A source file or submitted Markdown is limited to 1 MiB; URL-encoded form bodies are limited to 4 MiB. The host should also bound requests before reading them.
 
 ## Page templates
 
-`assets/*.html.jinja` owns all HTML structure. The folder/blog index, content view and editor extend `page.html.jinja`; the index includes the card template inside a loop. Navigation, revision history, editor scripts and empty states are also rendered in templates. Tcl handlers supply data instead of concatenating HTML.
+`assets/*.html.jinja` owns all HTML structure. The folder index, content view and editor extend `page.html.jinja`; the index includes the card template inside a loop. Navigation, revision history, editor scripts and empty states are also rendered in templates. Tcl handlers supply data instead of concatenating HTML.
 
 `library/templates.tcl` loads and validates the trusted templates once per interpreter, then calls `jinja2::render` with a template dictionary and path. Context strings, arrays and booleans are explicitly typed through `tjson::typed_to_json`. Ordinary values are automatically escaped exactly once. Only `markdown_html`, produced by the safe-mode cmark renderer, uses `|safe`; raw Markdown, titles, form values and navigation labels never do. Content is data and is never parsed as a template. A host can supply its own trusted child template, as the company homepage does, to inherit the same layout.
 
@@ -133,10 +134,17 @@ npm run build
 Versions and transitive dependencies are pinned in `package-lock.json`. Third-party MIT licenses are under `frontend/`. No CDN is used.
 
 Mount accepts `-config [dict create master_template $trustedTemplateSource]` to
-replace the shared page layout for that instance. The optional `templates` config
+replace the package page layout for that instance. The optional `templates` config
 key supplies additional named template sources. See the mount contract for the
 layout blocks and context. `library/initdb.tcl` supplies the public `initdb`
-entry point; hosts invoke it explicitly before importing either collection.
+entry point; hosts invoke it explicitly before importing wiki content.
+
+## Schema contract
+
+Version remains `0.1.0`. This implementation uses only wiki-owned tables and
+`::web::wiki` procedures. It has no legacy-table reads, migrations or compatibility
+wrappers. Initialize the new schema explicitly and import the desired sources;
+old browser revisions are not copied automatically.
 
 ## Verification
 

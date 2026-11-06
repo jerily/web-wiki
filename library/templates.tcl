@@ -1,8 +1,8 @@
-namespace eval ::web::content {
+namespace eval ::web::wiki {
     variable templates {}
 }
 
-proc ::web::content::init_templates {} {
+proc ::web::wiki::init_templates {} {
     variable root
     variable templates
     if {[dict size $templates]} {return}
@@ -17,20 +17,20 @@ proc ::web::content::init_templates {} {
 }
 
 # All text is explicitly typed; arrays and booleans are never inferred from strings.
-proc ::web::content::text_fields {dictionary} {
+proc ::web::wiki::text_fields {dictionary} {
     set fields {}
     dict for {key value} $dictionary {dict set fields $key [list S $value]}
     return $fields
 }
 
-proc ::web::content::rows_field {rows} {
+proc ::web::wiki::rows_field {rows} {
     set values {}
     foreach row $rows {lappend values [list M [text_fields $row]]}
     return [list L $values]
 }
 
-# Host configuration is local to a mount; shared defaults remain unchanged.
-proc ::web::content::page_templates {config {extraTemplates {}}} {
+# Host configuration is local to a mount; package defaults remain unchanged.
+proc ::web::wiki::page_templates {config {extraTemplates {}}} {
     variable templates
     init_templates
     set settings [dict get $config -config]
@@ -41,7 +41,7 @@ proc ::web::content::page_templates {config {extraTemplates {}}} {
     return $available
 }
 
-proc ::web::content::render_page {config name fields {extraTemplates {}}} {
+proc ::web::wiki::render_page {config name fields {extraTemplates {}}} {
     variable templates
     init_templates
     set navigation {}
