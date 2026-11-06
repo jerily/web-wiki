@@ -1,7 +1,10 @@
 proc ::web::wiki::mount {router args} {
     init_templates
     set config [options [dict create -store {} -prefix /wiki -authorize {} -csrf {} -navigation {} -config {}] {*}$args]
-    set settings [options {master_template {} templates {}} {*}[dict get $config -config]]
+    set settings [options {master_template {} templates {} allow_create false} {*}[dict get $config -config]]
+    if {![string is boolean -strict [dict get $settings allow_create]]} {
+        error "allow_create must be a boolean"
+    }
     dict set config -config $settings
     set available [page_templates $config]
     dict for {name text} $available {
@@ -25,6 +28,8 @@ proc ::web::wiki::mount {router args} {
     }
     foreach {methods pattern action} {
         GET /_assets/:asset asset
+        {GET POST} /_new new
+        {GET POST} /_new/:path(.*) new
         {GET POST} /_edit/:path(.*) edit
     } {
         $router add $methods $prefix$pattern [list ::web::wiki::dispatch $config $action] -strict true

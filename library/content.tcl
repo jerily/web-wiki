@@ -79,13 +79,9 @@ proc ::web::wiki::append_revision {store item} {
     db_execute [dict get $store -connection] [db_values [db_insert web_wiki_revisions] $values]
 }
 
-proc ::web::wiki::save {store path title markdown expectedRevision} {
-    canonical_path $path
+proc ::web::wiki::validate_page {title markdown} {
     # Browser form submission uses CRLF; imports and stored Markdown use LF.
     set markdown [string map [list "\r\n" "\n" "\r" "\n"] $markdown]
-    if {![string is integer -strict $expectedRevision] || $expectedRevision < 1} {
-        fail 400 "invalid revision"
-    }
     set title [string trim $title]
     if {$title eq {} || [string length $title] > 300 || [string first \x00 $title] >= 0} {
         fail 400 "title must contain between 1 and 300 characters"
@@ -93,6 +89,33 @@ proc ::web::wiki::save {store path title markdown expectedRevision} {
     if {[string length [encoding convertto utf-8 $markdown]] > 1048576 || [string first \x00 $markdown] >= 0} {
         fail 413 "Markdown exceeds the size limit or contains NUL"
     }
+    return [list $title $markdown]
+}
+
+# Browser-created pages have no source_path and are preserved by source sync.
+proc ::web::wiki::add {store parent title markdown} {
+    canonical_path $parent
+    lassign [validate_page $title $markdown] title markdown
+    set path [canonical_path [string trimright $parent /]/[slug $title]]
+    db_transaction [dict get $store -connection] {
+        if {[dict get [load $store $parent] item_type] ne "folder"} {fail 400 "parent must be a folder"}
+        set rows [dict get [execute $store [path_filter [db_select web_wiki_items] $path]] rows]
+        if {[llength $rows]} {fail 409 "content already exists at $path"}
+        set item [dict merge [identity $store $path] [dict create parent_path $parent \
+            item_type page title $title markdown $markdown source_path {} source_markdown {} \
+            revision 1 active 1 updated_at [now]]]
+        db_execute [dict get $store -connection] [db_values [db_insert web_wiki_items] $item]
+        append_revision $store $item
+    }
+    return $item
+}
+
+proc ::web::wiki::save {store path title markdown expectedRevision} {
+    canonical_path $path
+    if {![string is integer -strict $expectedRevision] || $expectedRevision < 1} {
+        fail 400 "invalid revision"
+    }
+    lassign [validate_page $title $markdown] title markdown
     db_transaction [dict get $store -connection] {
         set item [load $store $path]
         if {[dict get $item item_type] ne "page"} {fail 400 "only pages can be edited"}
@@ -185,6 +208,19 @@ proc ::web::wiki::sync {store directory} {
         foreach row [dict get [execute $store [db_select web_wiki_items]] rows] {
             dict set existing [dict get $row path] $row
         }
+        # Keep browser-created pages and their folder hierarchy accessible.
+        set browserPaths {}
+        dict for {path old} $existing {
+            if {[dict get $old item_type] eq "page" && [dict get $old source_path] eq {}} {
+                if {[dict exists $items $path]} {fail 409 "source conflicts with browser content at $path"}
+                set ancestor $path
+                while {1} {
+                    dict set browserPaths $ancestor 1
+                    if {$ancestor eq "/"} {break}
+                    set ancestor [dict get $existing $ancestor parent_path]
+                }
+            }
+        }
         dict for {path source} $items {
             set timestamp [now]
             set isPage [expr {[dict get $source item_type] eq "page"}]
@@ -213,7 +249,7 @@ proc ::web::wiki::sync {store directory} {
             if {$isPage && $changed} {append_revision $store [dict merge $old $changes]}
         }
         dict for {path old} $existing {
-            if {![dict exists $items $path] && [dict get $old active]} {
+            if {![dict exists $items $path] && ![dict exists $browserPaths $path] && [dict get $old active]} {
                 execute $store [path_filter [db_values [db_update web_wiki_items] \
                     [dict create active 0 updated_at [now]]] $path]
                 dict incr counts deactivated

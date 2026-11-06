@@ -320,4 +320,97 @@ test standalone-1 {package loads independently and creates only its own tables} 
     } finally {::tpersist::db_disconnect $connection}
 } -result {{} 0 {web_wiki_items web_wiki_revisions}}
 
+
+proc mount_creation_wiki {{enabled true}} {
+    ::web::wiki::mount $::router -store $::store -prefix /custom \
+        -authorize ::allow_editor -csrf ::csrf_editor -config [dict create allow_create $enabled]
+}
+proc post_creation_wiki {{body {title=New+Page&markdown=%23+New+Page%0D%0A%0D%0ABrowser&csrf=test-token}}} {
+    $::router dispatch [dict create method POST path /custom/_new \
+        headers {content-type application/x-www-form-urlencoded} body $body] {user editor}
+}
+
+test creation-1 {new items require the feature flag and editor callbacks} -setup setup_wiki -body {
+    ::web::wiki::mount $router -store $store -prefix /readonly -config {allow_create true}
+    mount_creation_wiki false
+    set statuses {}
+    foreach prefix {/readonly /custom} {
+        foreach method {GET POST} {
+            lappend statuses [dict get [$router dispatch [dict create method $method path $prefix/_new] {user editor}] statusCode]
+        }
+        lappend statuses [string match {*href="*/_new"*} [dict get [$router dispatch [dict create method GET path $prefix]] body]]
+    }
+    set statuses
+} -cleanup cleanup_wiki -result {404 404 0 404 404 0}
+
+test creation-2 {authorized forms publish revision one, redirect and reject duplicates} -setup setup_wiki -body {
+    mount_creation_wiki
+    set denied [$router dispatch {method GET path /custom/_new}]
+    set form [$router dispatch {method GET path /custom/_new} {user editor}]
+    set result [post_creation_wiki]
+    set item [::web::wiki::load $store /new-page]
+    list [dict get $denied statusCode] [dict get $form statusCode] \
+        [string match {*markdown-editor.bundle.js*} [dict get $form body]] \
+        [string match {*name="revision"*} [dict get $form body]] \
+        [dict get $result statusCode] [dict get $result headers location] \
+        [dict get $item revision] [dict get $item source_path] \
+        [dict get $item markdown] [llength [::web::wiki::history $store /new-page]] \
+        [dict get [post_creation_wiki] statusCode]
+} -cleanup cleanup_wiki -result [list 403 200 1 0 303 /custom/new-page 1 {} "# New Page\n\nBrowser" 1 409]
+
+test creation-3 {authorization, CSRF, malformed forms and metadata validation reject writes} -setup setup_wiki -body {
+    mount_creation_wiki
+    set result [list [dict get [$router dispatch {method POST path /custom/_new}] statusCode]]
+    foreach body {
+        {title=Denied&markdown=x&csrf=wrong}
+        {title=&markdown=x&csrf=test-token}
+        {title=x&title=y&markdown=x&csrf=test-token}
+        {title=x&csrf=test-token}
+        {title=%00&markdown=x&csrf=test-token}
+    } {lappend result [dict get [post_creation_wiki $body] statusCode]}
+    lappend result [llength [::web::wiki::history $store /new-page]]
+    set result
+} -cleanup cleanup_wiki -result {403 403 400 400 400 400 0}
+
+test creation-4 {browser pages survive sync and remain isolated by domain} -setup setup_wiki -body {
+    ::web::wiki::add $store / {New Page} Browser
+    ::web::wiki::sync $store $sourceDir
+    set other [::web::wiki::create -connection $db -domain other.test]
+    catch {::web::wiki::load $other /new-page} message options
+    list [dict get [::web::wiki::load $store /new-page] markdown] \
+        [dict get $options -errorcode] [llength [::web::wiki::history $store /new-page]]
+} -cleanup cleanup_wiki -result {Browser {WEB WIKI 404} 1}
+
+test creation-5 {source collisions with browser content fail without replacing revisions} -setup setup_wiki -body {
+    ::web::wiki::add $store / {New Page} Browser
+    set channel [open [file join $sourceDir New.md] w]
+    puts $channel {# New Page}; close $channel
+    catch {::web::wiki::sync $store $sourceDir} message options
+    list [dict get $options -errorcode] [dict get [::web::wiki::load $store /new-page] markdown]
+} -cleanup cleanup_wiki -result {{WEB WIKI 409} Browser}
+
+test creation-6 {nested creation preserves the parent when its source folder disappears} -setup setup_wiki -body {
+    mount_creation_wiki
+    set result [$router dispatch {method POST path /custom/_new/guides
+        headers {content-type application/x-www-form-urlencoded}
+        body {title=New&markdown=Nested&csrf=test-token}} {user editor}]
+    file delete -force [file join $sourceDir Guides]
+    ::web::wiki::sync $store $sourceDir
+    list [dict get $result headers location] \
+        [dict get [::web::wiki::load $store /guides] active] \
+        [dict get [::web::wiki::load $store /guides/new] markdown] \
+        [dict get [$router dispatch {method GET path /custom/guides}] statusCode]
+} -cleanup cleanup_wiki -result {/custom/guides/new 1 Nested 200}
+
+test creation-7 {invalid parents, traversal and oversized content cannot create rows} -setup setup_wiki -body {
+    mount_creation_wiki
+    set statuses {}
+    foreach path {/custom/_new/welcome /custom/_new/missing /custom/_new/../guides /custom/_new/guides%2Fbad} {
+        lappend statuses [dict get [$router dispatch [dict create method GET path $path] {user editor}] statusCode]
+    }
+    catch {::web::wiki::add $store / Large [string repeat x 1048577]} message options
+    lappend statuses [dict get $options -errorcode]
+    set statuses
+} -cleanup cleanup_wiki -result {400 404 400 400 {WEB WIKI 413}}
+
 cleanupTests

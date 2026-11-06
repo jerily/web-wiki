@@ -30,7 +30,7 @@ routes. Destroy the router to release registrations; there is no unmount API.
 | `-authorize` | Command prefix required with `-csrf` to enable editing |
 | `-csrf` | Command prefix required with `-authorize` |
 | `-navigation` | List of `{label /local-path}` links |
-| `-config` | Dict with optional `master_template` source and `templates` name/source dict |
+| `-config` | Dict with optional `master_template`, `templates`, and boolean `allow_create` (default `false`) |
 
 `create` accepts `-connection`, optional `-domain` and optional `-title`.
 `master_template` overrides `page.html.jinja` for this mount's index, item and editor.
@@ -45,6 +45,8 @@ templates fail before route registration. Other mounts keep their own defaults.
 | `/` and the bare prefix | GET/HEAD | Wiki folder index |
 | `/<path>` | GET/HEAD | Render an active item |
 | `/_assets/<asset>` | GET/HEAD | Serve a package-owned allowlisted asset |
+| `/_new` or `/_new/<parent>` | GET/HEAD | Authorized creation form; requires `allow_create true` |
+| `/_new` or `/_new/<parent>` | POST | Authorized, CSRF-checked creation and 303 redirect |
 | `/_edit/<path>` | GET/HEAD | Authorized editor form |
 | `/_edit/<path>` | POST | Authorized, CSRF-checked revision save and 303 redirect |
 
@@ -54,7 +56,7 @@ The underscore route segments are reserved. Hosts retain the original request
 fields, authentication context and headers during dispatch.
 
 Authorization callback: `callback request context action path` returns a boolean.
-Action is `edit` or `save`; path is canonical and relative to the mount.
+Action is `edit` or `save` for existing items, or `create` for both creation-form and creation-POST requests. For `create`, path identifies the existing parent folder; other actions identify the item. Paths are canonical and relative to the mount.
 CSRF callback: `callback issue request context {}` returns a nonempty session token;
 `callback verify request context submittedToken` returns a boolean. The host owns
 identity, session/token generation, and login challenges. Callback errors propagate.
@@ -64,3 +66,5 @@ POST accepts URL-encoded `title`, `markdown`, `revision`, and `csrf`. Base64 Lam
 bodies are supported. Duplicate/missing fields, invalid encodings and oversized
 content are rejected. Package errors use `{WEB WIKI <HTTP-status>}`; handlers
 convert these to responses while unexpected errors propagate to the host.
+
+Creation POST accepts URL-encoded `title`, `markdown`, and `csrf`. It has no revision field. Creation requires both editor callbacks and `allow_create true`; otherwise it returns 404. The title determines the URL. A duplicate URL returns 409. The new item and initial revision commit atomically.
