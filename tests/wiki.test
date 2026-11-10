@@ -413,4 +413,29 @@ test creation-7 {invalid parents, traversal and oversized content cannot create 
     set statuses
 } -cleanup cleanup_wiki -result {400 404 400 400 {WEB WIKI 413}}
 
+
+proc host_properties {request context} {
+    dict create show_edit_controls [list BOOL [dict exists $context member]] \
+        host_label [list S [dict get $request path]]
+}
+test host-context-1 {per-request host properties, default compatibility and mount isolation} -setup setup_wiki -body {
+    ::web::wiki::mount $router -store $store -prefix /dynamic \
+        -authorize allow_editor -csrf csrf_editor -context host_properties \
+        -config {allow_create true master_template {<header>{{ host_label }}</header>{% block body %}{% endblock %}}}
+    ::web::wiki::mount $router -store $store -prefix /plain \
+        -authorize allow_editor -csrf csrf_editor -config {allow_create true}
+    set result {}
+    foreach context {{} {member yes} {}} {
+        set body [dict get [$router dispatch {method GET path /dynamic/welcome} $context] body]
+        lappend result [expr {[string first {/dynamic/_edit} $body] >= 0}] \
+            [expr {[string first {/dynamic/_new} $body] >= 0}] \
+            [expr {[string first {<header>/dynamic/welcome</header>} $body] >= 0}]
+    }
+    set body [dict get [$router dispatch {method GET path /plain/welcome}] body]
+    lappend result [expr {[string first {/plain/_edit} $body] >= 0}] \
+        [expr {[string first {/plain/_new} $body] >= 0}] \
+        [dict get [$router dispatch {method GET path /dynamic/_edit/welcome}] statusCode]
+    set result
+} -cleanup cleanup_wiki -result {0 0 1 1 1 1 0 0 1 1 1 403}
+
 cleanupTests

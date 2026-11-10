@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(web-wiki VERSION 0.1.0 LANGUAGES NONE)
+project(web-wiki VERSION 0.1.1 LANGUAGES NONE)
 set(PACKAGE_DIR "lib/web-wiki${PROJECT_VERSION}")
 install(FILES pkgIndex.tcl readme.md LICENSE DESTINATION "${PACKAGE_DIR}")
 install(DIRECTORY library assets frontend DESTINATION "${PACKAGE_DIR}")

@@ -2,8 +2,8 @@
 {% block body %}
 <div class="actions">
   <a href="{{ parent }}">← Browse</a>
-  {% if edit_url %}<a class="button" href="{{ edit_url }}">Edit</a>{% endif %}
-  {% if create_url %}<a class="button" href="{{ create_url }}">New page</a>{% endif %}
+  {% if show_edit_controls and edit_url %}<a class="button" href="{{ edit_url }}">Edit</a>{% endif %}
+  {% if show_edit_controls and create_url %}<a class="button" href="{{ create_url }}">New page</a>{% endif %}
 </div>
 {% if date %}<p class="eyebrow">{{ date }}</p>{% endif %}
 {# Only safe-mode cmark output is marked safe; metadata keeps automatic escaping. #}

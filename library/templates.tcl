@@ -54,8 +54,12 @@ proc ::web::wiki::render_page {config name fields {extraTemplates {}}} {
     dict set context navigation [rows_field $navigation]
     dict set context editing {BOOL 0}
     dict set context creating {BOOL 0}
+    dict set context show_edit_controls {BOOL 1}
     dict set context create_url {S {}}
     set context [dict merge $context $fields]
+    if {[dict exists $config -template_context]} {
+        set context [dict merge $context [dict get $config -template_context]]
+    }
     # Extra templates come from the trusted host, never a request or content row.
     set available [page_templates $config $extraTemplates]
     ::jinja2::render [dict get $available $name] \

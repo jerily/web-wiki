@@ -1,7 +1,7 @@
 {% extends 'page.html.jinja' %}
 {% block body %}
 <h1>{{ title }}</h1>
-{% if create_url %}<a class="button" href="{{ create_url }}">New page</a>{% endif %}
+{% if show_edit_controls and create_url %}<a class="button" href="{{ create_url }}">New page</a>{% endif %}
 <div class="cards">
   {% for entry in entries %}
     {% include 'card.html.jinja' %}
