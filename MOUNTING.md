@@ -96,3 +96,9 @@ grant or revoke access: the authorization and CSRF callbacks still protect every
 editor request. Only trusted host code may supply template properties; do not
 merge arbitrary request fields into them. Invalid callback results are host
 configuration errors and propagate to the host's error handler.
+
+## Editor colors
+
+The editor supplies fallback colors for its border, background, text and focus
+outline. Host HSL theme variables remain optional and override those defaults.
+Visual and Markdown source modes share the same visible content-area styling.
