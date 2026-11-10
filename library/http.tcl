@@ -181,6 +181,18 @@ proc ::web::wiki::edit {config request context path} {
 
 proc ::web::wiki::dispatch {config action request context params} {
     try {
+        # Evaluate trusted host properties once per request, keeping mounts isolated.
+        set callback [dict get $config -context]
+        if {$action ne "asset" && $callback ne {}} {
+            set properties [{*}$callback $request $context]
+            ::tjson::typed_to_json [list M $properties]
+            if {[dict exists $properties show_edit_controls] &&
+                ([lindex [dict get $properties show_edit_controls] 0] ne "BOOL" ||
+                 ![string is boolean -strict [lindex [dict get $properties show_edit_controls] 1]])} {
+                error "show_edit_controls must be a typed BOOL"
+            }
+            dict set config -template_context $properties
+        }
         switch -- $action {
             asset {return [asset $params]}
             view {return [view $config [request_path $params]]}

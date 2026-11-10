@@ -1,6 +1,6 @@
 proc ::web::wiki::mount {router args} {
     init_templates
-    set config [options [dict create -store {} -prefix /wiki -authorize {} -csrf {} -navigation {} -config {}] {*}$args]
+    set config [options [dict create -store {} -prefix /wiki -authorize {} -csrf {} -navigation {} -context {} -config {}] {*}$args]
     set settings [options {master_template {} templates {} allow_create false} {*}[dict get $config -config]]
     if {![string is boolean -strict [dict get $settings allow_create]]} {
         error "allow_create must be a boolean"

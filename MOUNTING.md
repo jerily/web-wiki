@@ -68,3 +68,31 @@ content are rejected. Package errors use `{WEB WIKI <HTTP-status>}`; handlers
 convert these to responses while unexpected errors propagate to the host.
 
 Creation POST accepts URL-encoded `title`, `markdown`, and `csrf`. It has no revision field. Creation requires both editor callbacks and `allow_create true`; otherwise it returns 404. The title determines the URL. A duplicate URL returns 409. The new item and initial revision commit atomically.
+
+## Properties from the host on each request
+
+The optional `-context commandPrefix` callback receives `request context` and
+returns a dictionary of **typed Jinja values**, using `tjson` notation (`S`,
+`BOOL`, `N`, `L`, `M`). It runs once for each page request, including editor
+pages, and does not run for assets. Its values override the package's template
+values for that request only. This lets a host supply navigation, member details,
+feature flags, or other properties without coupling the package to a host.
+
+```tcl
+proc site_properties {request context} {
+    set signedIn [dict exists $context member]
+    dict create show_edit_controls [list BOOL $signedIn] \
+        site_name [list S {Our neighborhood}]
+}
+# Add this option to the mount call:
+# -context ::site_properties
+```
+
+`show_edit_controls` defaults to `{BOOL 1}`. Set it to `{BOOL 0}` to hide the
+add/edit links in the built-in templates. The links still require the existing
+editing configuration (`-authorize`, `-csrf`, and `allow_create` for additions).
+Without a callback, existing hosts keep the same behavior. Visibility does not
+grant or revoke access: the authorization and CSRF callbacks still protect every
+editor request. Only trusted host code may supply template properties; do not
+merge arbitrary request fields into them. Invalid callback results are host
+configuration errors and propagate to the host's error handler.
