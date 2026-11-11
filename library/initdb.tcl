@@ -23,4 +23,7 @@ proc ::web::wiki::initdb {connection} {
     }] -primary_key {domain path revision}]
     db_create_table $connection $items -if_not_exists 1
     db_create_table $connection $revisions -if_not_exists 1
+    # Filter a folder before sorting its children; avoid indexing large titles
+    # and a second full path alongside parent_path in PostgreSQL index tuples.
+    db_create_index $connection web_wiki_children web_wiki_items {domain parent_path active} -if_not_exists 1
 }

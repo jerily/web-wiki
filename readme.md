@@ -175,3 +175,12 @@ Editing is disabled unless both authorization and CSRF callbacks are supplied. E
 
 ### Pending
 Production identity/session management, TLS, rate limiting and transport body limits remain host responsibilities. This release has no upload API, revision restore UI, search, pagination, scheduled publishing or non-SQLite certification.
+
+## Database indexes
+
+Page reads and revision history use their composite primary keys. Folder reads use `web_wiki_children (domain, parent_path, active)` before sorting the matching entries.
+
+All database operations use `tpersist`. Rerun the explicit `initdb` maintenance
+operation to add these indexes to existing databases. Index creation is
+idempotent and never runs in request handlers. The example-community integration
+suite verifies the access paths with SQLite and PostgreSQL EXPLAIN plans.
