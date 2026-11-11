@@ -313,7 +313,7 @@ test standalone-1 {package loads independently and creates only its own tables} 
         ::web::wiki::initdb $connection
         ::web::wiki::initdb $connection
         set tables {}
-        foreach row [dict get [::tpersist::db_execute $connection [::tpersist::db_select sqlite_master -columns name]] rows] {
+        foreach row [dict get [::tpersist::db_execute $connection [::tpersist::db_where [::tpersist::db_select sqlite_master -columns name] -expr {type = 'table'}]] rows] {
             if {[string match web_* [dict get $row name]]} {lappend tables [dict get $row name]}
         }
         list [package provide web-blog] [namespace exists ::web::content] [lsort $tables]
