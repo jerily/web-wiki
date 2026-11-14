@@ -1,10 +1,10 @@
 {
   "name": "web-wiki",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "scripts": {},
   "dependencies": {
     "tcl": ">=8.6.0,<10.0.0",
-    "tpersist": "^0.1.0",
+    "tpersist": "^0.1.4",
     "tpathexp": "^1.1.0",
     "cmark-gfm-tcl": "^0.1.0",
     "tdbcsqlite3": ">=1.1.8",

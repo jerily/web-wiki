@@ -1,5 +1,10 @@
+# Copyright Jerily LTD. All Rights Reserved.
+# SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
+# SPDX-License-Identifier: MIT.
+
+# Load the wiki package and its storage dependencies.
 package require Tcl 8.6 9
-package require tpersist 0.1.0
+package require tpersist 0.1.4
 package require cmark_gfm 0.1.0
 package require tpathexp 1.1.0
 package require jinja2 0.1.0
@@ -14,4 +19,4 @@ source [file join $::web::wiki::root library initdb.tcl]
 source [file join $::web::wiki::root library templates.tcl]
 source [file join $::web::wiki::root library http.tcl]
 source [file join $::web::wiki::root library mount.tcl]
-package provide web-wiki 0.1.3
+package provide web-wiki 0.1.4

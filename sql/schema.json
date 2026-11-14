@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "tables": [
+    {
+      "name": "web_wiki_items",
+      "columns": {
+        "domain": {
+          "type": "varchar",
+          "length": 253,
+          "not_null": true
+        },
+        "path": {
+          "type": "varchar",
+          "length": 1024,
+          "not_null": true
+        },
+        "parent_path": {
+          "type": "text",
+          "not_null": true
+        },
+        "item_type": {
+          "type": "varchar",
+          "length": 16,
+          "not_null": true
+        },
+        "title": {
+          "type": "text",
+          "not_null": true
+        },
+        "markdown": {
+          "type": "text",
+          "not_null": true
+        },
+        "source_path": {
+          "type": "text",
+          "not_null": true
+        },
+        "source_markdown": {
+          "type": "text",
+          "not_null": true
+        },
+        "revision": {
+          "type": "integer",
+          "not_null": true
+        },
+        "active": {
+          "type": "boolean",
+          "not_null": true
+        },
+        "updated_at": {
+          "type": "varchar",
+          "length": 32,
+          "not_null": true
+        }
+      },
+      "primary_key": [
+        "domain",
+        "path"
+      ],
+      "indexes": [
+        {
+          "name": "web_wiki_children",
+          "columns": [
+            "domain",
+            "parent_path",
+            "active"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "web_wiki_revisions",
+      "columns": {
+        "domain": {
+          "type": "varchar",
+          "length": 253,
+          "not_null": true
+        },
+        "path": {
+          "type": "varchar",
+          "length": 1024,
+          "not_null": true
+        },
+        "revision": {
+          "type": "integer",
+          "not_null": true
+        },
+        "title": {
+          "type": "text",
+          "not_null": true
+        },
+        "markdown": {
+          "type": "text",
+          "not_null": true
+        },
+        "created_at": {
+          "type": "varchar",
+          "length": 32,
+          "not_null": true
+        }
+      },
+      "primary_key": [
+        "domain",
+        "path",
+        "revision"
+      ]
+    }
+  ]
+}
