@@ -102,3 +102,12 @@ configuration errors and propagate to the host's error handler.
 The editor supplies fallback colors for its border, background, text and focus
 outline. Host HSL theme variables remain optional and override those defaults.
 Visual and Markdown source modes share the same visible content-area styling.
+
+## Shared image rendering
+
+`-render-markdown` accepts a trusted command prefix taking Markdown and returning
+safe HTML. The host can pass `::web::static::wiki::render_content` bound to an
+`image_store`, so editable pages use the same validated local/CDN image URLs as
+static content. The callback also validates new and edited pages before saving.
+Expected validation errors use `{WEB CONTENT status}`. The callback must render
+raw HTML and unsafe URLs safely, as the default cmark-gfm renderer does.
