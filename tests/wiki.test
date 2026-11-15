@@ -1,6 +1,6 @@
 package require tcltest 2
 namespace import ::tcltest::*
-package require web-wiki 0.1.0
+package require web-wiki 0.1.5
 
 proc write_source {name text} {
     set channel [open [file join $::sourceDir $name] w]
@@ -418,14 +418,14 @@ proc host_properties {request context} {
     dict create show_edit_controls [list BOOL [dict exists $context member]] \
         host_label [list S [dict get $request path]]
 }
-test host-context-1 {per-request host properties, default compatibility and mount isolation} -setup setup_wiki -body {
+test host-context-1 {host properties can hide controls but cannot override authorization; mounts stay isolated} -setup setup_wiki -body {
     ::web::wiki::mount $router -store $store -prefix /dynamic \
         -authorize allow_editor -csrf csrf_editor -context host_properties \
         -config {allow_create true master_template {<header>{{ host_label }}</header>{% block body %}{% endblock %}}}
     ::web::wiki::mount $router -store $store -prefix /plain \
         -authorize allow_editor -csrf csrf_editor -config {allow_create true}
     set result {}
-    foreach context {{} {member yes} {}} {
+    foreach context {{} {member yes} {member yes user editor} {user editor}} {
         set body [dict get [$router dispatch {method GET path /dynamic/welcome} $context] body]
         lappend result [expr {[string first {/dynamic/_edit} $body] >= 0}] \
             [expr {[string first {/dynamic/_new} $body] >= 0}] \
@@ -436,6 +436,6 @@ test host-context-1 {per-request host properties, default compatibility and moun
         [expr {[string first {/plain/_new} $body] >= 0}] \
         [dict get [$router dispatch {method GET path /dynamic/_edit/welcome}] statusCode]
     set result
-} -cleanup cleanup_wiki -result {0 0 1 1 1 1 0 0 1 1 1 403}
+} -cleanup cleanup_wiki -result {0 0 1 0 0 1 1 1 1 0 0 1 0 0 403}
 
 cleanupTests

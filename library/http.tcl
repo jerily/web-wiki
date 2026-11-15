@@ -84,7 +84,7 @@ proc ::web::wiki::asset {params} {
     return $result
 }
 
-proc ::web::wiki::view {config path} {
+proc ::web::wiki::view {config request context path} {
     set store [dict get $config -store]
     set item [load $store $path]
     set title [dict get $item title]
@@ -96,7 +96,7 @@ proc ::web::wiki::view {config path} {
                 title [dict get $entry title] kind [dict get $entry item_type] \
                 date {}]
         }
-        set fields [text_fields [dict create title $title create_url [create_url $config $path]]]
+        set fields [text_fields [dict create title $title create_url [authorized_create_url $config $request $context $path]]]
         dict set fields entries [rows_field $rows]
         set html [render_page $config index.html.jinja $fields]
     } else {
@@ -106,7 +106,7 @@ proc ::web::wiki::view {config path} {
                 created_at [dict get $revision created_at]]
         }
         set editUrl {}
-        if {[dict get $config -authorize] ne {}} {
+        if {[authorized $config $request $context edit $path]} {
             set editUrl [dict get $config -prefix]/_edit$path
         }
         set markdownHtml [render_markdown $config [dict get $item markdown]]
@@ -114,7 +114,7 @@ proc ::web::wiki::view {config path} {
         regsub {^<h1>.*?</h1>\n} $markdownHtml {} markdownHtml
         set fields [text_fields [dict create title $title \
             parent [url $config [dict get $item parent_path]] edit_url $editUrl \
-            create_url [create_url $config [dict get $item parent_path]] \
+            create_url [authorized_create_url $config $request $context [dict get $item parent_path]] \
             markdown_html $markdownHtml \
             date {}]]
         dict set fields revisions [rows_field $revisions]
@@ -128,10 +128,20 @@ proc ::web::wiki::create_url {config parent} {
     return [dict get $config -prefix]/_new[string trimright $parent /]
 }
 
+# Use the same policy for links and editor routes. Missing policy denies access.
+proc ::web::wiki::authorized {config request context action path} {
+    set callback [dict get $config -authorize]
+    expr {$callback ne {} && [{*}$callback $request $context $action $path]}
+}
+proc ::web::wiki::authorized_create_url {config request context parent} {
+    set url [create_url $config $parent]
+    if {$url ne {} && [authorized $config $request $context create $parent]} {return $url}
+    return {}
+}
+
 proc ::web::wiki::new {config request context parent} {
     if {[create_url $config $parent] eq {}} {fail 404 "creation is disabled"}
-    set authorize [dict get $config -authorize]
-    if {![{*}$authorize $request $context create $parent]} {fail 403 "creation is not authorized"}
+    if {![authorized $config $request $context create $parent]} {fail 403 "creation is not authorized"}
     set csrf [dict get $config -csrf]
     set store [dict get $config -store]
     if {[dict get $request method] eq "POST"} {
@@ -158,7 +168,7 @@ proc ::web::wiki::edit {config request context path} {
     set csrf [dict get $config -csrf]
     if {$authorize eq {}} {fail 404 "editing is disabled"}
     set action [expr {[dict get $request method] eq "POST" ? "save" : "edit"}]
-    if {![{*}$authorize $request $context $action $path]} {fail 403 "editing is not authorized"}
+    if {![authorized $config $request $context $action $path]} {fail 403 "editing is not authorized"}
     set store [dict get $config -store]
     if {$action eq "save"} {
         set fields [form $request]
@@ -197,7 +207,7 @@ proc ::web::wiki::dispatch {config action request context params} {
         }
         switch -- $action {
             asset {return [asset $params]}
-            view {return [view $config [request_path $params]]}
+            view {return [view $config $request $context [request_path $params]]}
             new {return [new $config $request $context [request_path $params]]}
             edit {return [edit $config $request $context [request_path $params]]}
         }

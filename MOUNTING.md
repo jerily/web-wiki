@@ -89,11 +89,12 @@ proc site_properties {request context} {
 ```
 
 `show_edit_controls` defaults to `{BOOL 1}`. Set it to `{BOOL 0}` to hide the
-add/edit links in the built-in templates. The links still require the existing
-editing configuration (`-authorize`, `-csrf`, and `allow_create` for additions).
-Without a callback, existing hosts keep the same behavior. Visibility does not
-grant or revoke access: the authorization and CSRF callbacks still protect every
-editor request. Only trusted host code may supply template properties; do not
+add/edit links in the built-in templates. Links are generated only when
+`-authorize` allows `edit` for the item or `create` for its parent. Creation also
+requires `allow_create true`. The callback is evaluated on page views as well as
+editor routes and should have no side effects. Visibility does not grant access:
+authorization and CSRF are checked again on every editor request. Only trusted
+host code may supply template properties; do not
 merge arbitrary request fields into them. Invalid callback results are host
 configuration errors and propagate to the host's error handler.
 
@@ -111,3 +112,19 @@ safe HTML. The host can pass `::web::static::wiki::render_content` bound to an
 static content. The callback also validates new and edited pages before saving.
 Expected validation errors use `{WEB CONTENT status}`. The callback must render
 raw HTML and unsafe URLs safely, as the default cmark-gfm renderer does.
+
+## Editing permissions with web-user
+
+Bind `wiki.edit` to the authorization callback for creating and editing wiki
+content. Sign-in alone and `forum.moderate` do not supply this grant.
+
+```tcl
+::web::wiki::mount $router -store $contentStore \
+    -authorize [list ::web::user::authorize_permission $accountMount wiki.edit] \
+    -csrf [list ::web::user::csrf $accountMount] -config {allow_create true}
+```
+
+Assign the permission through web-user's groups configuration and synchronize it
+through the host's initialization or maintenance task. The package uses the same
+authorizer for visible controls and server access checks, including submission
+of an editor form opened before permission was revoked.
