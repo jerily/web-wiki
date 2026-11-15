@@ -1,0 +1,45 @@
+package require tcltest 2
+package require web-wiki 0.1.5
+namespace import ::tcltest::*
+namespace eval ::rendertest {}
+proc ::rendertest::setup {} {
+    variable directory [makeDirectory render-content]
+    set f [open [file join $directory Example.md] w]
+    puts $f {# Example}
+    close $f
+    variable db [::tpersist::db_connect -database :memory: -autobegin 0]
+    ::web::wiki::initdb $db
+    variable store [::web::wiki::create -connection $db]
+    ::web::wiki::sync $store $directory
+    variable router [::tpathexp::router]
+    ::web::wiki::mount $router -store $store -authorize ::rendertest::authorize -csrf ::rendertest::csrf \
+        -render-markdown ::rendertest::render -config {allow_create true}
+}
+proc ::rendertest::authorize {args} {return 1}
+proc ::rendertest::csrf {action args} {expr {$action eq "issue" ? "token" : 1}}
+proc ::rendertest::render {markdown} {
+    if {[string match {*missing.png*} $markdown]} {
+        return -code error -errorcode {WEB CONTENT 400} {Image is missing.}
+    }
+    return "<div class=\"image-renderer\">[::cmark_gfm::render_gfm_html $markdown]</div>"
+}
+proc ::rendertest::cleanup {} {
+    $::rendertest::router destroy
+    ::tpersist::db_disconnect $::rendertest::db
+    removeDirectory $::rendertest::directory
+}
+test renderer-1 {the host renderer supplies safe HTML and rejects invalid edits before persistence} -setup ::rendertest::setup -body {
+    set before [::web::wiki::load $::rendertest::store /example]
+    set html [dict get [$::rendertest::router dispatch {method GET path /wiki/example}] body]
+    set response [$::rendertest::router dispatch {method POST path /wiki/_edit/example \
+        headers {content-type application/x-www-form-urlencoded} body {title=Example&markdown=missing.png&revision=1&csrf=token}}]
+    list [string match {*class="image-renderer"*} $html] [dict get $response statusCode] \
+        [expr {[::web::wiki::load $::rendertest::store /example] eq $before}]
+} -cleanup ::rendertest::cleanup -result {1 400 1}
+
+test renderer-2 {invalid new content cannot be published through the browser} -setup ::rendertest::setup -body {
+    set response [$::rendertest::router dispatch {method POST path /wiki/_new \
+        headers {content-type application/x-www-form-urlencoded} body {title=New&markdown=missing.png&csrf=token}}]
+    list [dict get $response statusCode] [string match {*Image is missing*} [dict get $response body]]
+} -cleanup ::rendertest::cleanup -result {400 1}
+cleanupTests

@@ -19,4 +19,4 @@ source [file join $::web::wiki::root library initdb.tcl]
 source [file join $::web::wiki::root library templates.tcl]
 source [file join $::web::wiki::root library http.tcl]
 source [file join $::web::wiki::root library mount.tcl]
-package provide web-wiki 0.1.4
+package provide web-wiki 0.1.5
