@@ -8,7 +8,7 @@ package ifneeded web-wiki 1.0.0 [list source [file join $dir library web-wiki.tc
 
 # Locate the manifest without loading application services.
 package ifneeded web-wiki::manifest 1.0.0 [list apply {{dir} {
-    package require web-core 0.1.0
+    package require web-core
     ::web::core::register web-wiki $dir
     package provide web-wiki::manifest 1.0.0
 }} $dir]

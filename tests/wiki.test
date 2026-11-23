@@ -1,6 +1,6 @@
-package require tcltest 2
+package require tcltest
 namespace import ::tcltest::*
-package require web-wiki 1.0.0
+package require web-wiki
 
 proc write_source {name text} {
     set channel [open [file join $::sourceDir $name] w]
