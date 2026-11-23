@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT.
 
 # Load the wiki package and its storage dependencies.
+package require -exact web-wiki::manifest 1.0.0
 package require Tcl 8.6 9
 package require tpersist 0.1.4
 package require cmark_gfm 0.1.0
@@ -19,4 +20,4 @@ source [file join $::web::wiki::root library initdb.tcl]
 source [file join $::web::wiki::root library templates.tcl]
 source [file join $::web::wiki::root library http.tcl]
 source [file join $::web::wiki::root library mount.tcl]
-package provide web-wiki 0.1.5
+package provide web-wiki 1.0.0

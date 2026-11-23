@@ -36,7 +36,7 @@
 Install from the public ttrek registry:
 
 ```sh
-ttrek install -y web-wiki@0.1.0
+ttrek install -y web-wiki@1.0.0
 ```
 
 | Dependency | Tcl package |
@@ -58,12 +58,12 @@ cmake -S . -B build -DTCLSH=tclsh9.1
 cmake --install build --prefix "$PWD/stage"
 ```
 
-The result is `stage/lib/web-wiki0.1.0`. Add `stage/lib` and dependency package locations to `TCLLIBPATH`. CMake uses `LANGUAGES NONE`; Node is unnecessary for installation or runtime. CTest needs the runtime dependencies on the Tcl search path.
+The result is `stage/lib/web-wiki1.0.0`. Add `stage/lib` and dependency package locations to `TCLLIBPATH`. CMake uses `LANGUAGES NONE`; Node is unnecessary for installation or runtime. CTest needs the runtime dependencies on the Tcl search path.
 
 ## Usage
 
 ```tcl
-package require web-wiki 0.1.0
+package require web-wiki 1.0.0
 set db [::tpersist::db_connect -database company.sqlite -autobegin 0]
 
 # Maintenance only; do this before starting request workers.
