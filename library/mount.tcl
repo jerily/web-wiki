@@ -1,7 +1,8 @@
+# Register this mount's manifest routes on the supplied router.
 proc ::web::wiki::mount {router args} {
     init_templates
-    set config [options [dict create -store {} -prefix /wiki -authorize {} -csrf {} -navigation {} -context {} -render-markdown {} -config {}] {*}$args]
-    set settings [options {master_template {} templates {} allow_create false} {*}[dict get $config -config]]
+    set config [::web::core::options [dict create -store {} -prefix /wiki -authorize {} -csrf {} -navigation {} -context {} -render-markdown {} -config {}] {*}$args]
+    set settings [::web::core::options {master_template {} templates {} allow_create false} {*}[dict get $config -config]]
     if {![string is boolean -strict [dict get $settings allow_create]]} {
         error "allow_create must be a boolean"
     }
@@ -22,22 +23,8 @@ proc ::web::wiki::mount {router args} {
         if {[llength $link] != 2 || ![regexp {^/[^\r\n]*$} [lindex $link 1]] ||
             [string match {//*} [lindex $link 1]]} {error "navigation entries must be {label /local-path}"}
     }
-    set index [expr {$prefix eq {} ? "/" : $prefix}]
-    if {[dict get [$router match GET $index] statusCode] != 404} {
-        error "mount prefix is already handled; mount content before catch-all routes"
-    }
-    foreach {methods pattern action} {
-        GET /_assets/:asset asset
-        {GET POST} /_new new
-        {GET POST} /_new/:path(.*) new
-        {GET POST} /_edit/:path(.*) edit
-    } {
-        $router add $methods $prefix$pattern [list ::web::wiki::dispatch $config $action] -strict true
-    }
-    $router add GET $index [list ::web::wiki::dispatch $config view] -strict true
-    if {$prefix ne {}} {
-        $router add GET $prefix/ [list ::web::wiki::dispatch $config view] -strict true
-    }
-    $router add GET $prefix/:path(.*) [list ::web::wiki::dispatch $config view] -strict true
+    set manifest [::web::core::manifest web-wiki]
+    set plan [::web::core::route_plan $manifest $prefix $config $settings]
+    ::web::core::install $router $plan
     return $config
 }

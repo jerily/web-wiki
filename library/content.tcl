@@ -2,17 +2,8 @@ proc ::web::wiki::fail {status message} {
     return -code error -errorcode [list WEB WIKI $status] $message
 }
 
-proc ::web::wiki::options {defaults args} {
-    if {[llength $args] % 2} {error "options must be name/value pairs"}
-    foreach {key value} $args {
-        if {![dict exists $defaults $key]} {error "unknown option: $key"}
-        dict set defaults $key $value
-    }
-    return $defaults
-}
-
 proc ::web::wiki::create {args} {
-    set config [options {-connection {} -domain default -title {}} {*}$args]
+    set config [::web::core::options {-connection {} -domain default -title {}} {*}$args]
     if {[dict get $config -connection] eq {}} {error "-connection is required"}
     set domain [dict get $config -domain]
     if {![regexp {^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$} $domain]} {error "invalid domain"}
