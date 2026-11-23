@@ -63,7 +63,7 @@ The result is `stage/lib/web-wiki1.0.0`. Add `stage/lib` and dependency package 
 ## Usage
 
 ```tcl
-package require web-wiki 1.0.0
+package require web-wiki
 set db [::tpersist::db_connect -database company.sqlite -autobegin 0]
 
 # Maintenance only; do this before starting request workers.

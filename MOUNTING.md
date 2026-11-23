@@ -6,7 +6,7 @@ The implementations, persistence, rendering, templates and assets belong to
 web-wiki. No other web application package or commons content package is required.
 
 ```tcl
-package require web-wiki 1.0.0
+package require web-wiki
 ::web::wiki::initdb $connection
 set store [::web::wiki::create -connection $connection -domain example.test]
 ::web::wiki::mount $router -store $store -prefix /wiki
